@@ -4,6 +4,9 @@ description: A lightweight Flutter package for tracking PDF reading progress and
 
 version: 1.0.0
 
+homepage: https://github.com/ArunKumar73177/pdf_reading_tracker
+repository: https://github.com/ArunKumar73177/pdf_reading_tracker
+issue_tracker: https://github.com/ArunKumar73177/pdf_reading_tracker/issues
 
 environment:
   sdk: ^3.9.2
