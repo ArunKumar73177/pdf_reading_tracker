@@ -38,12 +38,28 @@ class ProgressService {
   Future<int> saveProgress(ReadingProgress progress) async {
     try {
       final db = await _db;
-      final rowId = await db.insert(
+      final existing = await db.query(
+        DatabaseConstants.tableReadingProgress,
+        where: '${DatabaseConstants.columnPdfId} = ?',
+        whereArgs: [progress.pdfId],
+        limit: 1,
+      );
+
+      if (existing.isEmpty) {
+        return await db.insert(
+          DatabaseConstants.tableReadingProgress,
+          progress.toMap(),
+        );
+      }
+
+      await db.update(
         DatabaseConstants.tableReadingProgress,
         progress.toMap(),
-        conflictAlgorithm: ConflictAlgorithm.replace,
+        where: '${DatabaseConstants.columnPdfId} = ?',
+        whereArgs: [progress.pdfId],
       );
-      return rowId;
+
+      return existing.first[DatabaseConstants.columnId] as int;
     } on DatabaseException catch (e, st) {
       throw ProgressServiceException(
         'saveProgress failed for pdfId="${progress.pdfId}".',

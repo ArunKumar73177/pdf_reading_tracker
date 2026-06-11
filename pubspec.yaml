@@ -1,8 +1,10 @@
 name: pdf_reading_tracker
 
-description: A lightweight Flutter package for tracking PDF reading progress and bookmarks using SQLite.
+description: >
+  A complete Flutter PDF reader package — renders PDFs, tracks reading
+  progress, and manages bookmarks, all backed by SQLite.
 
-version: 1.0.0
+version: 2.0.0
 
 homepage: https://github.com/ArunKumar73177/pdf_reading_tracker
 repository: https://github.com/ArunKumar73177/pdf_reading_tracker
@@ -15,9 +17,13 @@ dependencies:
   flutter:
     sdk: flutter
 
+  # Persistence
   sqflite: ^2.4.2
   path: ^1.9.0
   path_provider: ^2.1.5
+
+  # PDF Rendering  ← NEW
+  alh_pdf_view: ^2.3.3
 
 dev_dependencies:
   flutter_test:

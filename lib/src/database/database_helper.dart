@@ -254,16 +254,22 @@ class DatabaseHelper {
   Future<void> _createBookmarksTable(Database db) async {
     await db.execute('''
       CREATE TABLE IF NOT EXISTS ${DatabaseConstants.tableBookmarks} (
-        ${DatabaseConstants.columnId}         INTEGER  PRIMARY KEY AUTOINCREMENT,
-        ${DatabaseConstants.columnPdfId}      TEXT     NOT NULL,
-        ${DatabaseConstants.columnPage}       INTEGER  NOT NULL,
-        ${DatabaseConstants.columnNote}       TEXT,
-        ${DatabaseConstants.columnCreatedAt}  TEXT     NOT NULL,
-        FOREIGN KEY (${DatabaseConstants.columnPdfId})
-          REFERENCES ${DatabaseConstants.tableReadingProgress}
-            (${DatabaseConstants.columnPdfId})
-          ON DELETE CASCADE
-      );
+  ${DatabaseConstants.columnId} INTEGER PRIMARY KEY AUTOINCREMENT,
+  ${DatabaseConstants.columnPdfId} TEXT NOT NULL,
+  ${DatabaseConstants.columnPage} INTEGER NOT NULL,
+  ${DatabaseConstants.columnNote} TEXT,
+  ${DatabaseConstants.columnCreatedAt} TEXT NOT NULL,
+
+  UNIQUE(
+    ${DatabaseConstants.columnPdfId},
+    ${DatabaseConstants.columnPage}
+  ),
+
+  FOREIGN KEY (${DatabaseConstants.columnPdfId})
+    REFERENCES ${DatabaseConstants.tableReadingProgress}
+      (${DatabaseConstants.columnPdfId})
+    ON DELETE CASCADE
+);
     ''');
   }
 

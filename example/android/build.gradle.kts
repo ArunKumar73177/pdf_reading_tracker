@@ -1,7 +1,16 @@
+// example/android/build.gradle
+//
+// ⚠️  alh_pdf_view requires JitPack to resolve its Android PDF dependency.
+//    Add the maven block below to the allprojects > repositories section.
+
 allprojects {
     repositories {
         google()
         mavenCentral()
+
+        maven {
+            url = uri("https://jitpack.io")
+        }
     }
 }
 

@@ -21,7 +21,7 @@ abstract final class DatabaseConstants {
   /// | 2       | Added `title` column to reading_progress    |
   ///
   /// Bump this value whenever [_onUpgrade] gains a new migration step.
-  static const int kDatabaseVersion = 2;
+  static const int kDatabaseVersion = 3;
 
   // ---------------------------------------------------------------------------
   // Table names
