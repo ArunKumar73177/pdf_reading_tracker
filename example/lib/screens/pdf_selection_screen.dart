@@ -2,13 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:pdf_reading_tracker/pdf_reading_tracker.dart';
 
 import '../models/pdf_document.dart';
+import 'pdf_operations_screen.dart';
 import 'pdf_reader_screen.dart';
 
-/// Landing screen that presents the PDF catalogue as Material 3 cards.
-///
-/// Each card shows the document title, subtitle, and the last-read progress
-/// loaded live from SQLite. Tapping a card opens [PdfReaderScreen] with the
-/// selected [PdfDocument].
+/// Landing screen — presents the PDF catalogue plus a button to the
+/// PDF Operations screen (merge & split demo).
 class PdfSelectionScreen extends StatefulWidget {
   const PdfSelectionScreen({super.key});
 
@@ -17,7 +15,6 @@ class PdfSelectionScreen extends StatefulWidget {
 }
 
 class _PdfSelectionScreenState extends State<PdfSelectionScreen> {
-  /// Map from document.id → last saved progress (null if none).
   final Map<String, ReadingProgress?> _progressMap = {};
   bool _loading = true;
 
@@ -27,16 +24,12 @@ class _PdfSelectionScreenState extends State<PdfSelectionScreen> {
     _loadAllProgress();
   }
 
-  /// Loads progress for every document in the catalogue so the cards can
-  /// show a "resume at page X" subtitle without opening the reader.
   Future<void> _loadAllProgress() async {
     final results = await Future.wait(
-      kPdfCatalogue.map(
-            (doc) async {
-          final progress = await PdfReadingTracker.getProgress(doc.id);
-          return MapEntry(doc.id, progress);
-        },
-      ),
+      kPdfCatalogue.map((doc) async {
+        final progress = await PdfReadingTracker.getProgress(doc.id);
+        return MapEntry(doc.id, progress);
+      }),
     );
     if (!mounted) return;
     setState(() {
@@ -49,12 +42,15 @@ class _PdfSelectionScreenState extends State<PdfSelectionScreen> {
 
   Future<void> _openDocument(PdfDocument document) async {
     await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => PdfReaderScreen(document: document),
-      ),
+      MaterialPageRoute(builder: (_) => PdfReaderScreen(document: document)),
     );
-    // Refresh progress values when returning from reader.
     await _loadAllProgress();
+  }
+
+  void _openOperations() {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const PdfOperationsScreen()),
+    );
   }
 
   @override
@@ -67,14 +63,28 @@ class _PdfSelectionScreenState extends State<PdfSelectionScreen> {
         centerTitle: true,
         backgroundColor: cs.primaryContainer,
         foregroundColor: cs.onPrimaryContainer,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.build_rounded),
+            tooltip: 'PDF Operations (Merge & Split)',
+            onPressed: _openOperations,
+          ),
+        ],
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : ListView.builder(
         padding: const EdgeInsets.all(16),
-        itemCount: kPdfCatalogue.length,
+        itemCount: kPdfCatalogue.length + 1, // +1 for operations card
         itemBuilder: (context, index) {
-          final doc = kPdfCatalogue[index];
+          // ── Operations card (first item) ──────────────────────────
+          if (index == 0) {
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 16),
+              child: _OperationsCard(onTap: _openOperations),
+            );
+          }
+          final doc = kPdfCatalogue[index - 1];
           final progress = _progressMap[doc.id];
           return _PdfDocumentCard(
             document: doc,
@@ -88,7 +98,64 @@ class _PdfSelectionScreenState extends State<PdfSelectionScreen> {
 }
 
 // ---------------------------------------------------------------------------
-// Sub-widget
+// Operations promo card
+// ---------------------------------------------------------------------------
+
+class _OperationsCard extends StatelessWidget {
+  const _OperationsCard({required this.onTap});
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+
+    return Card(
+      elevation: 0,
+      color: cs.tertiaryContainer,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Row(
+            children: [
+              CircleAvatar(
+                backgroundColor: cs.tertiary,
+                foregroundColor: cs.onTertiary,
+                child: const Icon(Icons.build_rounded),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('PDF Operations',
+                        style: tt.titleMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: cs.onTertiaryContainer)),
+                    const SizedBox(height: 4),
+                    Text('Merge & Split PDFs',
+                        style: tt.bodySmall
+                            ?.copyWith(color: cs.onTertiaryContainer)),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right_rounded,
+                  color: cs.onTertiaryContainer),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Document card (unchanged from original)
 // ---------------------------------------------------------------------------
 
 class _PdfDocumentCard extends StatelessWidget {
@@ -106,12 +173,9 @@ class _PdfDocumentCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
-
-    final hasProgress =
-        progress != null && progress!.totalPages > 0;
-    final pct = hasProgress
-        ? (progress!.progressPct).toStringAsFixed(1)
-        : null;
+    final hasProgress = progress != null && progress!.totalPages > 0;
+    final pct =
+    hasProgress ? (progress!.progressPct).toStringAsFixed(1) : null;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
@@ -128,7 +192,6 @@ class _PdfDocumentCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // ── Header row ──────────────────────────────────────────────
               Row(
                 children: [
                   CircleAvatar(
@@ -141,32 +204,22 @@ class _PdfDocumentCard extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          document.title,
-                          style: tt.titleMedium?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
+                        Text(document.title,
+                            style: tt.titleMedium
+                                ?.copyWith(fontWeight: FontWeight.bold)),
                         const SizedBox(height: 2),
-                        Text(
-                          document.subtitle,
-                          style: tt.bodySmall?.copyWith(
-                            color: cs.onSurfaceVariant,
-                          ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
+                        Text(document.subtitle,
+                            style: tt.bodySmall
+                                ?.copyWith(color: cs.onSurfaceVariant),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis),
                       ],
                     ),
                   ),
-                  Icon(
-                    Icons.chevron_right_rounded,
-                    color: cs.onSurfaceVariant,
-                  ),
+                  Icon(Icons.chevron_right_rounded,
+                      color: cs.onSurfaceVariant),
                 ],
               ),
-
-              // ── Progress row ─────────────────────────────────────────────
               if (hasProgress) ...[
                 const SizedBox(height: 16),
                 ClipRRect(
@@ -174,8 +227,7 @@ class _PdfDocumentCard extends StatelessWidget {
                   child: LinearProgressIndicator(
                     value: progress!.progressPct / 100,
                     backgroundColor: cs.surfaceContainerHighest,
-                    valueColor:
-                    AlwaysStoppedAnimation<Color>(cs.primary),
+                    valueColor: AlwaysStoppedAnimation<Color>(cs.primary),
                     minHeight: 5,
                   ),
                 ),
@@ -184,27 +236,19 @@ class _PdfDocumentCard extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
-                      'Page ${progress!.currentPage + 1} '
-                          'of ${progress!.totalPages}',
-                      style: tt.bodySmall
-                          ?.copyWith(color: cs.onSurfaceVariant),
-                    ),
-                    Text(
-                      '$pct% read',
-                      style: tt.bodySmall?.copyWith(
-                        color: cs.primary,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
+                        'Page ${progress!.currentPage + 1} of ${progress!.totalPages}',
+                        style: tt.bodySmall
+                            ?.copyWith(color: cs.onSurfaceVariant)),
+                    Text('$pct% read',
+                        style: tt.bodySmall?.copyWith(
+                            color: cs.primary,
+                            fontWeight: FontWeight.w600)),
                   ],
                 ),
               ] else ...[
                 const SizedBox(height: 12),
-                Text(
-                  'Not started',
-                  style: tt.bodySmall
-                      ?.copyWith(color: cs.outline),
-                ),
+                Text('Not started',
+                    style: tt.bodySmall?.copyWith(color: cs.outline)),
               ],
             ],
           ),
