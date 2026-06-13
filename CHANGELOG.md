@@ -1,22 +1,19 @@
-## 2.0.0
+## 2.0.1
 
-### Breaking changes
-- None — all existing `PdfReadingTracker.*` static calls work unchanged.
+### New Features
 
-### New features
-- Added `PdfReadingTrackerViewer` widget: complete drop-in PDF reader.
-- Added `PdfViewerTheme` for app bar and progress bar colour customisation.
-- Added `showAppBar`, `showBottomBar`, `showBookmarkFab` flags for embedding.
-- Integrated `alh_pdf_view` as a package dependency — consumers no longer
-  need to add it separately.
-- Automatic FK-anchor creation prevents silent bookmark INSERT failures on
-  first launch.
+* Added PDF Merge functionality using Syncfusion PDF.
+* Added PDF Split functionality using Syncfusion PDF.
+* Added PDF Operations example screen demonstrating merge and split workflows.
+* Added typed PDF operation exceptions for better error handling.
+* Added isolate-based PDF processing to keep UI responsive during heavy operations.
 
-### Internal
-- Added `PdfViewerController` (internal), `ReaderBottomBar`, `BookmarkFab`,
-  `BookmarksSheet` widgets — all private, not exported.
+### Improvements
 
-## 1.0.0
+* Improved example application structure.
+* Enhanced package architecture for future PDF operations such as page extraction, deletion, rotation, and annotations.
 
-- Initial release: SQLite-backed reading progress tracking and bookmark
-  management.
+### Fixes
+
+* Fixed bookmark persistence issues in the example application.
+* Improved multi-PDF workflow and reading progress restoration.
