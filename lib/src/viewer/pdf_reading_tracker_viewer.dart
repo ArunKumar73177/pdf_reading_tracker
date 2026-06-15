@@ -7,13 +7,9 @@ import 'widgets/bookmarks_sheet.dart';
 import 'widgets/reader_bottom_bar.dart';
 
 // ---------------------------------------------------------------------------
-// Theme data-class
+// Theme data-class (unchanged)
 // ---------------------------------------------------------------------------
 
-/// Optional theming for [PdfReadingTrackerViewer].
-///
-/// Pass a [PdfViewerTheme] to [PdfReadingTrackerViewer.theme] to override
-/// specific colours without replacing the entire app theme.
 @immutable
 class PdfViewerTheme {
   const PdfViewerTheme({
@@ -21,7 +17,6 @@ class PdfViewerTheme {
     this.appBarForegroundColor,
     this.progressBarColor,
   });
-
   final Color? appBarBackgroundColor;
   final Color? appBarForegroundColor;
   final Color? progressBarColor;
@@ -33,13 +28,11 @@ class PdfViewerTheme {
 
 /// A complete, self-contained PDF reader widget.
 ///
-/// Drop it anywhere in your widget tree. The widget handles:
-///  - rendering the PDF via `alh_pdf_view`
-///  - auto-saving & restoring reading progress (last page)
-///  - adding, loading, and removing bookmarks
-///  - displaying a bottom progress bar and a bookmark FAB
+/// Supports two PDF sources — mutually exclusive:
+/// - **Asset PDF**: provide [assetPath].
+/// - **User-picked PDF**: provide [filePath] (absolute on-device path).
 ///
-/// ### Minimal usage
+/// ### Asset usage
 /// ```dart
 /// PdfReadingTrackerViewer(
 ///   pdfId: 'clean_architecture_v1',
@@ -48,28 +41,21 @@ class PdfViewerTheme {
 /// )
 /// ```
 ///
-/// ### With optional callbacks and theming
+/// ### User-picked PDF usage
 /// ```dart
 /// PdfReadingTrackerViewer(
-///   pdfId: 'clean_architecture_v1',
-///   pdfTitle: 'Clean Architecture',
-///   assetPath: 'assets/docs/clean_architecture.pdf',
-///   onPageChanged: (page, total) => print('$page / $total'),
-///   theme: PdfViewerTheme(
-///     appBarBackgroundColor: Colors.indigo,
-///     appBarForegroundColor: Colors.white,
-///   ),
+///   pdfId: picked.pdfId,
+///   pdfTitle: picked.title,
+///   filePath: picked.filePath,
 /// )
 /// ```
-///
-/// The [pdfId] must be unique and stable across app launches — it is the
-/// primary key used to look up progress and bookmarks in SQLite.
 class PdfReadingTrackerViewer extends StatefulWidget {
   const PdfReadingTrackerViewer({
     super.key,
     required this.pdfId,
     required this.pdfTitle,
-    required this.assetPath,
+    this.assetPath,
+    this.filePath,
     this.onPageChanged,
     this.theme,
     this.swipeHorizontal = true,
@@ -77,41 +63,28 @@ class PdfReadingTrackerViewer extends StatefulWidget {
     this.showAppBar = true,
     this.showBottomBar = true,
     this.showBookmarkFab = true,
-  });
+  }) : assert(
+  (assetPath != null) != (filePath != null),
+  'Provide exactly one of assetPath or filePath.',
+  );
 
-  /// Unique, stable key for this PDF document.
-  ///
-  /// Used as the SQLite primary key — **do not change it** after first launch
-  /// or progress / bookmarks will be lost.
+  /// Unique, stable SQLite key for this PDF. Never change after first launch.
   final String pdfId;
-
-  /// Human-readable title shown in the [AppBar].
   final String pdfTitle;
 
-  /// Flutter asset path, e.g. `'assets/docs/sample.pdf'`.
-  final String assetPath;
+  /// Flutter asset path. Mutually exclusive with [filePath].
+  final String? assetPath;
 
-  /// Called on every page turn with the new zero-based page index and total.
+  /// Absolute on-device path for user-picked PDFs. Mutually exclusive with
+  /// [assetPath].
+  final String? filePath;
+
   final void Function(int page, int total)? onPageChanged;
-
-  /// Optional theme overrides (app bar colours, progress bar colour).
   final PdfViewerTheme? theme;
-
-  /// Orientation of page swiping. Defaults to horizontal.
   final bool swipeHorizontal;
-
-  /// Enable double-tap to zoom.
   final bool enableDoubleTap;
-
-  /// Whether to show the built-in [AppBar].
-  ///
-  /// Set to `false` when embedding the viewer inside your own [Scaffold].
   final bool showAppBar;
-
-  /// Whether to show the [ReaderBottomBar].
   final bool showBottomBar;
-
-  /// Whether to show the bookmark [FloatingActionButton].
   final bool showBookmarkFab;
 
   @override
@@ -129,6 +102,10 @@ class _PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
       pdfId: widget.pdfId,
       pdfTitle: widget.pdfTitle,
       assetPath: widget.assetPath,
+      filePath: widget.filePath,
+      // For user-picked PDFs, store the filePath in the progress record so
+      // Recent PDFs can verify the file still exists.
+      onDeviceFilePath: widget.filePath,
     );
     _ctrl.addListener(_onUpdate);
     _ctrl.init();
@@ -146,23 +123,20 @@ class _PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
   }
 
   // ---------------------------------------------------------------------------
-  // Actions
+  // Bookmark actions
   // ---------------------------------------------------------------------------
 
   Future<void> _handleBookmarkTap() async {
-    final note = await _showNoteDialog(context, _ctrl.currentPage + 1);
+    final note = await _showAddNoteDialog(context, _ctrl.currentPage + 1);
     if (!mounted || note == null) return;
-
     try {
       await _ctrl.addBookmark(note: note.isEmpty ? null : note);
     } on BookmarkServiceException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Could not save bookmark: $e'),
-          backgroundColor: Theme.of(context).colorScheme.error,
-        ),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Could not save bookmark: $e'),
+        backgroundColor: Theme.of(context).colorScheme.error,
+      ));
     }
   }
 
@@ -172,6 +146,22 @@ class _PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
       bookmarks: _ctrl.bookmarks,
       currentPage: _ctrl.currentPage,
       onDelete: _ctrl.removeBookmark,
+      onEditNote: _ctrl.updateBookmarkNote,
+    );
+    if (page != null && mounted) {
+      await _ctrl.goToPage(page);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Jump To Page
+  // ---------------------------------------------------------------------------
+
+  Future<void> _handleJumpToPage() async {
+    final page = await _showJumpToPageDialog(
+      context,
+      currentPage: _ctrl.currentPage,
+      totalPages: _ctrl.totalPages,
     );
     if (page != null && mounted) {
       await _ctrl.goToPage(page);
@@ -191,10 +181,7 @@ class _PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
 
     final body = _buildBody(cs);
 
-    if (!widget.showAppBar) {
-      // Embedding mode — caller owns the Scaffold.
-      return body;
-    }
+    if (!widget.showAppBar) return body;
 
     return Scaffold(
       appBar: AppBar(
@@ -202,7 +189,14 @@ class _PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
         backgroundColor: theme?.appBarBackgroundColor ?? cs.primaryContainer,
         foregroundColor: theme?.appBarForegroundColor ?? cs.onPrimaryContainer,
         actions: [
-          if (!_ctrl.isLoading && _ctrl.error == null)
+          if (!_ctrl.isLoading && _ctrl.error == null) ...[
+            // Jump to page
+            IconButton(
+              icon: const Icon(Icons.redo_rounded),
+              tooltip: 'Jump to page',
+              onPressed: _handleJumpToPage,
+            ),
+            // Bookmarks list
             IconButton(
               icon: Badge(
                 isLabelVisible: _ctrl.bookmarks.isNotEmpty,
@@ -212,6 +206,7 @@ class _PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
               tooltip: 'View bookmarks',
               onPressed: _handleBookmarksIconTap,
             ),
+          ],
         ],
       ),
       body: body,
@@ -238,16 +233,12 @@ class _PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
     if (_ctrl.isLoading) {
       return const Center(child: CircularProgressIndicator());
     }
-
     if (_ctrl.error != null) {
-      return _ErrorView(
-        message: _ctrl.error!,
-        onRetry: _ctrl.init,
-      );
+      return _ErrorView(message: _ctrl.error!, onRetry: _ctrl.init);
     }
 
     return AlhPdfView(
-      filePath: _ctrl.filePath!,
+      filePath: _ctrl.resolvedFilePath!,
       defaultPage: _ctrl.initialPage,
       backgroundColor: cs.surface,
       swipeHorizontal: widget.swipeHorizontal,
@@ -260,25 +251,27 @@ class _PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
       onRender: _ctrl.onRender,
       onError: (err) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('PDF error: $err'),
-              backgroundColor: cs.error,
-            ),
-          );
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('PDF error: $err'),
+            backgroundColor: cs.error,
+          ));
         }
       },
     );
   }
 
-  Future<String?> _showNoteDialog(BuildContext context, int pageNumber) {
-    final textCtrl = TextEditingController();
+  // ---------------------------------------------------------------------------
+  // Dialogs
+  // ---------------------------------------------------------------------------
+
+  Future<String?> _showAddNoteDialog(BuildContext context, int pageNumber) {
+    final ctrl = TextEditingController();
     return showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text('Bookmark page $pageNumber'),
         content: TextField(
-          controller: textCtrl,
+          controller: ctrl,
           decoration: const InputDecoration(
             hintText: 'Add a note (optional)',
             border: OutlineInputBorder(),
@@ -294,7 +287,7 @@ class _PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
             child: const Text('Cancel'),
           ),
           FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(textCtrl.text.trim()),
+            onPressed: () => Navigator.of(ctx).pop(ctrl.text.trim()),
             child: const Text('Save'),
           ),
         ],
@@ -304,7 +297,72 @@ class _PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
 }
 
 // ---------------------------------------------------------------------------
-// Error view (internal)
+// Jump To Page dialog (free function — reusable)
+// ---------------------------------------------------------------------------
+
+/// Shows a validated "Jump to page" dialog.
+///
+/// Returns the **zero-based** page index to navigate to, or `null` if
+/// dismissed. [currentPage] and [totalPages] are zero-based.
+Future<int?> _showJumpToPageDialog(
+    BuildContext context, {
+      required int currentPage,
+      required int totalPages,
+    }) async {
+  if (totalPages <= 0) return null;
+
+  final ctrl = TextEditingController(text: '${currentPage + 1}');
+  final formKey = GlobalKey<FormState>();
+
+  return showDialog<int>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text('Jump to page'),
+      content: Form(
+        key: formKey,
+        child: TextFormField(
+          controller: ctrl,
+          keyboardType: TextInputType.number,
+          autofocus: true,
+          decoration: InputDecoration(
+            labelText: 'Page number',
+            hintText: '1 – $totalPages',
+            border: const OutlineInputBorder(),
+            suffixText: '/ $totalPages',
+          ),
+          validator: (v) {
+            final n = int.tryParse(v?.trim() ?? '');
+            if (n == null) return 'Enter a number';
+            if (n < 1 || n > totalPages) return '1 – $totalPages';
+            return null;
+          },
+          onFieldSubmitted: (_) {
+            if (formKey.currentState!.validate()) {
+              Navigator.of(ctx).pop(int.parse(ctrl.text.trim()) - 1);
+            }
+          },
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(ctx).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () {
+            if (formKey.currentState!.validate()) {
+              Navigator.of(ctx).pop(int.parse(ctrl.text.trim()) - 1);
+            }
+          },
+          child: const Text('Go'),
+        ),
+      ],
+    ),
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Error view
 // ---------------------------------------------------------------------------
 
 class _ErrorView extends StatelessWidget {

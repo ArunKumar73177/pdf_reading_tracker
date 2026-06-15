@@ -25,7 +25,6 @@ class PdfReadingTrackerExampleApp extends StatelessWidget {
         useMaterial3: true,
       ),
       themeMode: ThemeMode.system,
-      // Landing screen is now the selection screen, not the reader directly.
       home: const PdfSelectionScreen(),
     );
   }

@@ -5,12 +5,12 @@ import '../../models/bookmark.dart';
 /// Shows the bookmark list in a modal bottom sheet.
 ///
 /// Returns the page the user wants to navigate to, or `null` if dismissed.
-/// Internal to the package — not exported.
 Future<int?> showBookmarksSheet({
   required BuildContext context,
   required List<Bookmark> bookmarks,
   required int currentPage,
   required Future<void> Function(int id) onDelete,
+  required Future<void> Function(int id, String? note) onEditNote,
 }) {
   return showModalBottomSheet<int>(
     context: context,
@@ -23,12 +23,13 @@ Future<int?> showBookmarksSheet({
       bookmarks: bookmarks,
       currentPage: currentPage,
       onDelete: onDelete,
+      onEditNote: onEditNote,
     ),
   );
 }
 
 // ---------------------------------------------------------------------------
-// Sheet content (stateful so it can remove items locally while deleting)
+// Sheet content
 // ---------------------------------------------------------------------------
 
 class _BookmarksSheetContent extends StatefulWidget {
@@ -36,11 +37,13 @@ class _BookmarksSheetContent extends StatefulWidget {
     required this.bookmarks,
     required this.currentPage,
     required this.onDelete,
+    required this.onEditNote,
   });
 
   final List<Bookmark> bookmarks;
   final int currentPage;
   final Future<void> Function(int id) onDelete;
+  final Future<void> Function(int id, String? note) onEditNote;
 
   @override
   State<_BookmarksSheetContent> createState() => _BookmarksSheetContentState();
@@ -49,6 +52,7 @@ class _BookmarksSheetContent extends StatefulWidget {
 class _BookmarksSheetContentState extends State<_BookmarksSheetContent> {
   late List<Bookmark> _items;
   final Set<int> _deleting = {};
+  final Set<int> _editingNote = {};
 
   @override
   void initState() {
@@ -56,16 +60,45 @@ class _BookmarksSheetContentState extends State<_BookmarksSheetContent> {
     _items = List.of(widget.bookmarks);
   }
 
+  // ---------------------------------------------------------------------------
+  // Actions
+  // ---------------------------------------------------------------------------
+
   Future<void> _delete(Bookmark bm) async {
     if (bm.id == null) return;
     setState(() => _deleting.add(bm.id!));
     try {
       await widget.onDelete(bm.id!);
-      setState(() => _items.removeWhere((b) => b.id == bm.id));
+      if (mounted) setState(() => _items.removeWhere((b) => b.id == bm.id));
     } finally {
       if (mounted) setState(() => _deleting.remove(bm.id));
     }
   }
+
+  Future<void> _editNote(Bookmark bm) async {
+    if (bm.id == null) return;
+
+    final newNote = await _showEditNoteDialog(context, bm);
+    if (newNote == null || !mounted) return; // cancelled
+
+    setState(() => _editingNote.add(bm.id!));
+    try {
+      final trimmed = newNote.trim().isEmpty ? null : newNote.trim();
+      await widget.onEditNote(bm.id!, trimmed);
+      if (mounted) {
+        setState(() {
+          final idx = _items.indexWhere((b) => b.id == bm.id);
+          if (idx != -1) _items[idx] = bm.copyWith(note: trimmed);
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _editingNote.remove(bm.id));
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Build
+  // ---------------------------------------------------------------------------
 
   @override
   Widget build(BuildContext context) {
@@ -125,16 +158,15 @@ class _BookmarksSheetContentState extends State<_BookmarksSheetContent> {
               itemBuilder: (_, i) {
                 final bm = _items[i];
                 final isDeleting = _deleting.contains(bm.id);
+                final isEditingNote = _editingNote.contains(bm.id);
                 final isCurrent = bm.page == widget.currentPage;
+                final isBusy = isDeleting || isEditingNote;
 
                 return ListTile(
-                  onTap: isDeleting
+                  onTap: isBusy
                       ? null
                       : () => Navigator.of(context).pop(bm.page),
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 4,
-                  ),
+                  contentPadding: const EdgeInsets.fromLTRB(16, 4, 8, 4),
                   leading: CircleAvatar(
                     backgroundColor:
                     isCurrent ? cs.primary : cs.secondaryContainer,
@@ -159,7 +191,7 @@ class _BookmarksSheetContentState extends State<_BookmarksSheetContent> {
                           : FontWeight.normal,
                     ),
                   ),
-                  subtitle: bm.note != null
+                  subtitle: bm.note != null && bm.note!.isNotEmpty
                       ? Text(
                     bm.note!,
                     style: tt.bodySmall
@@ -169,21 +201,42 @@ class _BookmarksSheetContentState extends State<_BookmarksSheetContent> {
                   )
                       : Text(
                     _formatDate(bm.createdAt),
-                    style: tt.bodySmall
-                        ?.copyWith(color: cs.outline),
+                    style:
+                    tt.bodySmall?.copyWith(color: cs.outline),
                   ),
-                  trailing: isDeleting
+                  // ── Trailing action row ───────────────────────────
+                  trailing: isBusy
                       ? const SizedBox(
                     width: 20,
                     height: 20,
                     child: CircularProgressIndicator(
                         strokeWidth: 2),
                   )
-                      : IconButton(
-                    icon: Icon(Icons.delete_outline,
-                        color: cs.error),
-                    tooltip: 'Remove bookmark',
-                    onPressed: () => _delete(bm),
+                      : Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Edit note
+                      IconButton(
+                        icon: Icon(
+                          bm.note != null && bm.note!.isNotEmpty
+                              ? Icons.edit_note_rounded
+                              : Icons.note_add_outlined,
+                          color: cs.primary,
+                        ),
+                        tooltip: bm.note != null &&
+                            bm.note!.isNotEmpty
+                            ? 'Edit note'
+                            : 'Add note',
+                        onPressed: () => _editNote(bm),
+                      ),
+                      // Delete
+                      IconButton(
+                        icon: Icon(Icons.delete_outline,
+                            color: cs.error),
+                        tooltip: 'Remove bookmark',
+                        onPressed: () => _delete(bm),
+                      ),
+                    ],
                   ),
                 );
               },
@@ -199,6 +252,54 @@ class _BookmarksSheetContentState extends State<_BookmarksSheetContent> {
           '${dt.month.toString().padLeft(2, '0')}/'
           '${dt.year}';
 }
+
+// ---------------------------------------------------------------------------
+// Edit-note dialog
+// ---------------------------------------------------------------------------
+
+Future<String?> _showEditNoteDialog(
+    BuildContext context,
+    Bookmark bookmark,
+    ) async {
+  final ctrl = TextEditingController(text: bookmark.note ?? '');
+  final pageLabel = 'Page ${bookmark.page + 1}';
+
+  return showDialog<String>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: Text('Note for $pageLabel'),
+      content: TextField(
+        controller: ctrl,
+        decoration: const InputDecoration(
+          hintText: 'Write a note… (leave empty to clear)',
+          border: OutlineInputBorder(),
+        ),
+        maxLines: 4,
+        autofocus: true,
+        textCapitalization: TextCapitalization.sentences,
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(ctx).pop(), // null = cancelled
+          child: const Text('Cancel'),
+        ),
+        if (bookmark.note != null && bookmark.note!.isNotEmpty)
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(''), // empty = clear note
+            child: const Text('Clear note'),
+          ),
+        FilledButton(
+          onPressed: () => Navigator.of(ctx).pop(ctrl.text),
+          child: const Text('Save'),
+        ),
+      ],
+    ),
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Empty state
+// ---------------------------------------------------------------------------
 
 class _EmptyState extends StatelessWidget {
   const _EmptyState({required this.cs, required this.tt});

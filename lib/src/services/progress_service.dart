@@ -4,79 +4,48 @@ import '../constants/database_constants.dart';
 import '../database/database_helper.dart';
 import '../models/reading_progress.dart';
 
-/// Service layer for all [ReadingProgress] persistence operations.
+/// Thrown by [ProgressService] when a database operation fails.
+class ProgressServiceException implements Exception {
+  const ProgressServiceException(this.message, {this.cause});
+  final String message;
+  final Object? cause;
+
+  @override
+  String toString() => 'ProgressServiceException: $message'
+      '${cause != null ? '\nCause: $cause' : ''}';
+}
+
+/// SQLite-backed service for reading progress records.
 ///
-/// Every public method is safe to call from any isolate that has access to the
-/// main Flutter engine (sqflite requirement). All database access is routed
-/// through the [DatabaseHelper] singleton so the connection is shared and
-/// never opened more than once.
-///
-/// Usage:
-/// ```dart
-/// final service = ProgressService.instance;
-/// final id = await service.saveProgress(ReadingProgress.create(...));
-/// ```
+/// **v2.1.0 addition**: [getOrCreate] collapses the previous two-call
+/// pattern (`_ensureProgressExists` + `getProgress`) into a single
+/// database round-trip, reducing cold-open latency noticeably on slower
+/// Android storage.
 class ProgressService {
-  ProgressService._internal();
+  ProgressService._();
+  static final instance = ProgressService._();
 
-  /// Package-scoped singleton.
-  static final ProgressService instance = ProgressService._internal();
-
-  /// Convenience accessor — avoids repeating `DatabaseHelper.instance` inline.
   Future<Database> get _db => DatabaseHelper.instance.database;
 
   // ---------------------------------------------------------------------------
-  // Write operations
+  // CRUD
   // ---------------------------------------------------------------------------
 
-  /// Inserts or replaces a [ReadingProgress] record and returns the row id.
-  ///
-  /// Uses `ConflictAlgorithm.replace` so callers can treat INSERT and UPDATE
-  /// identically — the unique index on `pdf_id` enforces one row per document.
-  ///
-  /// Throws a [ProgressServiceException] on any database error.
+  /// Upserts [progress] and returns the SQLite row id.
   Future<int> saveProgress(ReadingProgress progress) async {
     try {
       final db = await _db;
-      final existing = await db.query(
-        DatabaseConstants.tableReadingProgress,
-        where: '${DatabaseConstants.columnPdfId} = ?',
-        whereArgs: [progress.pdfId],
-        limit: 1,
-      );
-
-      if (existing.isEmpty) {
-        return await db.insert(
-          DatabaseConstants.tableReadingProgress,
-          progress.toMap(),
-        );
-      }
-
-      await db.update(
+      return await db.insert(
         DatabaseConstants.tableReadingProgress,
         progress.toMap(),
-        where: '${DatabaseConstants.columnPdfId} = ?',
-        whereArgs: [progress.pdfId],
+        conflictAlgorithm: ConflictAlgorithm.replace,
       );
-
-      return existing.first[DatabaseConstants.columnId] as int;
-    } on DatabaseException catch (e, st) {
-      throw ProgressServiceException(
-        'saveProgress failed for pdfId="${progress.pdfId}".',
-        cause: e,
-        stackTrace: st,
-      );
+    } catch (e) {
+      throw ProgressServiceException('Failed to save progress', cause: e);
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // Read operations
-  // ---------------------------------------------------------------------------
-
-  /// Returns the [ReadingProgress] for [pdfId], or `null` if no record exists.
-  ///
-  /// Throws a [ProgressServiceException] on any database or deserialisation
-  /// error.
+  /// Returns the progress for [pdfId], or `null` if never opened.
   Future<ReadingProgress?> getProgress(String pdfId) async {
     try {
       final db = await _db;
@@ -86,32 +55,81 @@ class ProgressService {
         whereArgs: [pdfId],
         limit: 1,
       );
-
-      if (rows.isEmpty) return null;
-      return ReadingProgress.fromMap(rows.first);
-    } on ProgressServiceException {
-      rethrow;
-    } on DatabaseException catch (e, st) {
-      throw ProgressServiceException(
-        'getProgress failed for pdfId="$pdfId".',
-        cause: e,
-        stackTrace: st,
-      );
-    } catch (e, st) {
-      // Catches FormatException from ReadingProgress.fromMap.
-      throw ProgressServiceException(
-        'getProgress — deserialisation failed for pdfId="$pdfId".',
-        cause: e,
-        stackTrace: st,
-      );
+      return rows.isEmpty ? null : ReadingProgress.fromMap(rows.first);
+    } catch (e) {
+      throw ProgressServiceException('Failed to get progress', cause: e);
     }
   }
 
-  /// Returns every [ReadingProgress] record ordered by most-recently read first.
+  /// Returns an existing [ReadingProgress] for [pdfId], or creates and returns
+  /// a fresh zero-progress record if none exists.
   ///
-  /// Returns an empty list when no records exist.
-  /// Throws a [ProgressServiceException] on any database or deserialisation
-  /// error.
+  /// This replaces the previous two-call idiom used by [PdfViewerController]:
+  /// ```dart
+  /// // Before (2 round-trips):
+  /// await _ensureProgressExists();
+  /// final saved = await ProgressService.instance.getProgress(pdfId);
+  ///
+  /// // After (1 round-trip):
+  /// final saved = await ProgressService.instance.getOrCreate(
+  ///   pdfId: pdfId,
+  ///   pdfTitle: pdfTitle,
+  ///   onDeviceFilePath: onDeviceFilePath,
+  /// );
+  /// ```
+  Future<ReadingProgress> getOrCreate({
+    required String pdfId,
+    required String pdfTitle,
+    String? onDeviceFilePath,
+  }) async {
+    try {
+      final db = await _db;
+
+      // Single query — most opens are warm (record already exists).
+      final rows = await db.query(
+        DatabaseConstants.tableReadingProgress,
+        where: '${DatabaseConstants.columnPdfId} = ?',
+        whereArgs: [pdfId],
+        limit: 1,
+      );
+
+      if (rows.isNotEmpty) {
+        final existing = ReadingProgress.fromMap(rows.first);
+        // Keep filePath in sync if the user moved and re-picked the file.
+        if (onDeviceFilePath != null &&
+            existing.filePath != onDeviceFilePath) {
+          final updated = existing.copyWith(filePath: onDeviceFilePath);
+          await db.insert(
+            DatabaseConstants.tableReadingProgress,
+            updated.toMap(),
+            conflictAlgorithm: ConflictAlgorithm.replace,
+          );
+          return updated;
+        }
+        return existing;
+      }
+
+      // First open — create anchor row.
+      final fresh = ReadingProgress.create(
+        pdfId: pdfId,
+        currentPage: 0,
+        totalPages: 0,
+        title: pdfTitle,
+        filePath: onDeviceFilePath,
+      );
+      await db.insert(
+        DatabaseConstants.tableReadingProgress,
+        fresh.toMap(),
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+      return fresh;
+    } catch (e) {
+      throw ProgressServiceException('Failed to get-or-create progress',
+          cause: e);
+    }
+  }
+
+  /// Returns all progress records, most-recently-read first.
   Future<List<ReadingProgress>> getAllProgress() async {
     try {
       final db = await _db;
@@ -119,106 +137,54 @@ class ProgressService {
         DatabaseConstants.tableReadingProgress,
         orderBy: '${DatabaseConstants.columnLastReadAt} DESC',
       );
-
-      return rows.map(ReadingProgress.fromMap).toList(growable: false);
-    } on ProgressServiceException {
-      rethrow;
-    } on DatabaseException catch (e, st) {
-      throw ProgressServiceException(
-        'getAllProgress failed.',
-        cause: e,
-        stackTrace: st,
-      );
-    } catch (e, st) {
-      throw ProgressServiceException(
-        'getAllProgress — deserialisation failed.',
-        cause: e,
-        stackTrace: st,
-      );
+      return rows.map(ReadingProgress.fromMap).toList();
+    } catch (e) {
+      throw ProgressServiceException('Failed to get all progress', cause: e);
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // Delete operations
-  // ---------------------------------------------------------------------------
+  /// Returns up to [limit] most-recently-read records.
+  ///
+  /// Records where `total_pages = 0` (never rendered) are excluded so the
+  /// Recent PDFs list only shows PDFs that were actually opened in the viewer.
+  Future<List<ReadingProgress>> getRecentlyRead({int limit = 20}) async {
+    try {
+      final db = await _db;
+      final rows = await db.query(
+        DatabaseConstants.tableReadingProgress,
+        where: '${DatabaseConstants.columnTotalPages} > 0',
+        orderBy: '${DatabaseConstants.columnLastReadAt} DESC',
+        limit: limit,
+      );
+      return rows.map(ReadingProgress.fromMap).toList();
+    } catch (e) {
+      throw ProgressServiceException('Failed to get recently read', cause: e);
+    }
+  }
 
-  /// Deletes the [ReadingProgress] record for [pdfId].
-  ///
-  /// Returns `true` if a row was deleted, `false` if no matching record
-  /// existed. The associated bookmarks are removed automatically by the
-  /// `ON DELETE CASCADE` foreign-key constraint defined on the bookmarks table.
-  ///
-  /// Throws a [ProgressServiceException] on any database error.
+  /// Deletes the progress record for [pdfId]. Returns `true` if a row was
+  /// deleted.
   Future<bool> deleteProgress(String pdfId) async {
     try {
       final db = await _db;
-      final affected = await db.delete(
+      final count = await db.delete(
         DatabaseConstants.tableReadingProgress,
         where: '${DatabaseConstants.columnPdfId} = ?',
         whereArgs: [pdfId],
       );
-      return affected > 0;
-    } on DatabaseException catch (e, st) {
-      throw ProgressServiceException(
-        'deleteProgress failed for pdfId="$pdfId".',
-        cause: e,
-        stackTrace: st,
-      );
+      return count > 0;
+    } catch (e) {
+      throw ProgressServiceException('Failed to delete progress', cause: e);
     }
   }
 
-  /// Deletes **all** reading-progress records (and their cascaded bookmarks)
-  /// inside a single transaction.
-  ///
-  /// This is a destructive, unrecoverable operation — use only in explicit
-  /// "clear all data" user flows or test teardown.
-  ///
-  /// Throws a [ProgressServiceException] on any database error; the
-  /// transaction is rolled back automatically by sqflite on failure.
+  /// Deletes all progress records.
   Future<void> clearAllProgress() async {
     try {
       final db = await _db;
-      await db.transaction((txn) async {
-        await txn.delete(DatabaseConstants.tableReadingProgress);
-      });
-    } on DatabaseException catch (e, st) {
-      throw ProgressServiceException(
-        'clearAllProgress failed.',
-        cause: e,
-        stackTrace: st,
-      );
+      await db.delete(DatabaseConstants.tableReadingProgress);
+    } catch (e) {
+      throw ProgressServiceException('Failed to clear progress', cause: e);
     }
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Exception type
-// ---------------------------------------------------------------------------
-
-/// Thrown by [ProgressService] when a database operation cannot be completed.
-///
-/// Always wraps the original [cause] so callers can inspect the root error
-/// without depending on sqflite's internal exception hierarchy.
-class ProgressServiceException implements Exception {
-  const ProgressServiceException(
-      this.message, {
-        this.cause,
-        this.stackTrace,
-      });
-
-  /// Human-readable description of what failed.
-  final String message;
-
-  /// The underlying error (typically a [DatabaseException] or [FormatException]).
-  final Object? cause;
-
-  /// Stack trace captured at the throw site.
-  final StackTrace? stackTrace;
-
-  @override
-  String toString() {
-    final buffer = StringBuffer('ProgressServiceException: $message');
-    if (cause != null) buffer.write('\nCause: $cause');
-    return buffer.toString();
   }
 }

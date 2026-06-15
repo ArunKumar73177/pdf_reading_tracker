@@ -1,8 +1,9 @@
 name: example
 description: >
-  Demonstrates real-world integration of pdf_reading_tracker with ALH PDF View.
-  Shows progress persistence, bookmark management, and page restoration using
-  SQLite storage through the pdf_reading_tracker package.
+  Demonstrates real-world integration of pdf_reading_tracker v2.1.0:
+  file-picker PDF selection, reading progress, bookmarks, merge/split
+  with real device files, recent PDFs, continue reading, jump to page,
+  and bookmark notes.
 publish_to: 'none'
 
 environment:
@@ -16,10 +17,19 @@ dependencies:
   pdf_reading_tracker:
     path: ../
 
+  # alh_pdf_view is re-exported via pdf_reading_tracker but listed here
+  # so PdfOperationsScreen can use AlhPdfView directly for generated files.
   alh_pdf_view: ^2.3.3
 
-  # Required to copy bundled PDF assets to a writable temp path.
+  # path is used in PdfOperationsScreen for basename / basenameWithoutExtension.
+  path: ^1.9.0
+
+  # path_provider is used in PdfOperationsScreen for getTemporaryDirectory.
   path_provider: ^2.1.0
+
+  # file_picker is re-exported through pdf_reading_tracker but listed here
+  # explicitly so the example can call FilePicker.platform directly.
+  file_picker: ^8.1.2
 
 dev_dependencies:
   flutter_test:
@@ -29,6 +39,7 @@ dev_dependencies:
 flutter:
   uses-material-design: true
 
-  assets:
-    - assets/sample.pdf
-    - assets/sample2.pdf
+  # No bundled assets required — all PDFs come from the device file picker.
+  # sample.pdf / sample2.pdf are kept only so the existing merge/split
+  # integration tests (if any) continue to compile. Remove them freely
+  # once those tests are updated.

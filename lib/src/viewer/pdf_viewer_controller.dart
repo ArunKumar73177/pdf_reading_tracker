@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:alh_pdf_view/alh_pdf_view.dart';
@@ -12,29 +13,44 @@ import '../services/progress_service.dart';
 
 /// Source of truth for [PdfReadingTrackerViewer].
 ///
-/// This class is **internal to the package** and is not exported.
-/// Consumers interact exclusively with [PdfReadingTrackerViewer].
+/// **v2.1.0 performance changes**
+/// - `init()` now issues a single DB call ([ProgressService.getOrCreate]) instead
+///   of two sequential calls (`_ensureProgressExists` + `getProgress`).
+/// - Progress saves are debounced (300 ms) so rapid page-turn sequences produce
+///   one write rather than N writes.
+/// - `goToPage` is guarded against duplicate calls to the same page index.
 ///
-/// Responsibilities:
-///  - Extract asset / network PDF to a temp file for [alh_pdf_view].
-///  - Guarantee a reading_progress FK-anchor row before any bookmark write.
-///  - Persist progress on every page change.
-///  - Load / add / remove bookmarks, keeping in-memory state in sync.
+/// Supports two PDF sources:
+/// - **Asset PDF**: pass [assetPath]; the controller extracts it to a temp file.
+/// - **User-picked PDF**: pass [filePath] directly; no extraction needed.
+///
+/// Exactly one of [assetPath] or [filePath] must be non-null.
 class PdfViewerController extends ChangeNotifier {
   PdfViewerController({
     required this.pdfId,
     required this.pdfTitle,
-    required this.assetPath,
-  });
+    this.assetPath,
+    this.filePath,
+    this.onDeviceFilePath,
+  }) : assert(
+  (assetPath != null) != (filePath != null),
+  'Provide exactly one of assetPath or filePath.',
+  );
 
-  /// Unique, stable key for this PDF — used as the SQLite pdf_id.
   final String pdfId;
-
-  /// Human-readable title shown in the app bar.
   final String pdfTitle;
 
-  /// Flutter asset path, e.g. `'assets/docs/sample.pdf'`.
-  final String assetPath;
+  /// Flutter asset path, e.g. `'assets/docs/sample.pdf'`. Mutually exclusive
+  /// with [filePath].
+  final String? assetPath;
+
+  /// Absolute on-device file path for user-picked PDFs. Mutually exclusive
+  /// with [assetPath].
+  final String? filePath;
+
+  /// Absolute on-device file path stored in the progress record.
+  /// Used so the Recent PDFs list can verify the file still exists.
+  final String? onDeviceFilePath;
 
   // ---------------------------------------------------------------------------
   // Exposed state
@@ -46,8 +62,8 @@ class PdfViewerController extends ChangeNotifier {
   String? _error;
   String? get error => _error;
 
-  String? _filePath;
-  String? get filePath => _filePath;
+  String? _resolvedFilePath;
+  String? get resolvedFilePath => _resolvedFilePath;
 
   AlhPdfViewController? _pdfViewController;
 
@@ -60,45 +76,61 @@ class PdfViewerController extends ChangeNotifier {
   int _totalPages = 0;
   int get totalPages => _totalPages;
 
-  double get progressPct =>
-      _totalPages > 0
-          ? (_currentPage / _totalPages * 100).clamp(0.0, 100.0)
-          : 0.0;
+  double get progressPct => _totalPages > 0
+      ? (_currentPage / _totalPages * 100).clamp(0.0, 100.0)
+      : 0.0;
 
   List<Bookmark> _bookmarks = [];
-
-  /// An unmodifiable view of the current bookmark list.
   List<Bookmark> get bookmarks => List.unmodifiable(_bookmarks);
 
   bool _savingProgress = false;
   bool get isSavingProgress => _savingProgress;
 
   // ---------------------------------------------------------------------------
+  // Debounce
+  // ---------------------------------------------------------------------------
+
+  Timer? _progressDebounce;
+
+  /// How long to wait after the last page change before writing to SQLite.
+  static const _kProgressDebounce = Duration(milliseconds: 300);
+
+  // ---------------------------------------------------------------------------
   // Lifecycle
   // ---------------------------------------------------------------------------
 
-  /// Must be called once from [State.initState].
-  ///
-  /// Strict initialisation order:
-  ///  1. Extract asset → temp file  (no DB dependency)
-  ///  2. Ensure FK-anchor progress row exists
-  ///  3. Restore saved page
-  ///  4. Load bookmarks
   Future<void> init() async {
     _log('init() pdfId=$pdfId');
     _setLoading(true);
     _error = null;
 
     try {
-      _filePath = await _extractAsset();
-      await _ensureProgressExists();
-
-      final saved = await ProgressService.instance.getProgress(pdfId);
-      if (saved != null) {
-        _initialPage = saved.currentPage;
-        _currentPage = saved.currentPage;
-        _totalPages  = saved.totalPages;
-        _log('Restored page $_currentPage / $_totalPages');
+      // File resolution and DB bootstrap run concurrently when possible.
+      // Asset extraction must happen first so we have a valid file path;
+      // for user-picked PDFs we can parallelise file resolution with the DB
+      // call since filePath is already known.
+      if (filePath != null) {
+        // Parallel: resolve path + bootstrap DB record.
+        final results = await Future.wait([
+          Future.value(filePath!),
+          ProgressService.instance.getOrCreate(
+            pdfId: pdfId,
+            pdfTitle: pdfTitle,
+            onDeviceFilePath: onDeviceFilePath,
+          ),
+        ]);
+        _resolvedFilePath = results[0] as String;
+        final saved = results[1] as ReadingProgress;
+        _applyProgress(saved);
+      } else {
+        // Asset PDF: must extract before DB call (pdfId is stable, filePath is null).
+        _resolvedFilePath = await _extractAsset();
+        final saved = await ProgressService.instance.getOrCreate(
+          pdfId: pdfId,
+          pdfTitle: pdfTitle,
+          onDeviceFilePath: onDeviceFilePath,
+        );
+        _applyProgress(saved);
       }
 
       await _reloadBookmarks();
@@ -108,6 +140,19 @@ class PdfViewerController extends ChangeNotifier {
     } finally {
       _setLoading(false);
     }
+  }
+
+  void _applyProgress(ReadingProgress saved) {
+    _initialPage = saved.currentPage;
+    _currentPage = saved.currentPage;
+    _totalPages = saved.totalPages;
+    _log('Restored page $_currentPage / $_totalPages');
+  }
+
+  @override
+  void dispose() {
+    _progressDebounce?.cancel();
+    super.dispose();
   }
 
   // ---------------------------------------------------------------------------
@@ -121,9 +166,9 @@ class PdfViewerController extends ChangeNotifier {
 
   Future<void> onPageChanged(int page, int total) async {
     _currentPage = page;
-    _totalPages  = total;
+    _totalPages = total;
     notifyListeners();
-    await _persistProgress();
+    _schedulePersistProgress();
   }
 
   void onRender(int pages) {
@@ -135,17 +180,14 @@ class PdfViewerController extends ChangeNotifier {
   // Bookmark operations
   // ---------------------------------------------------------------------------
 
-  /// Adds a bookmark on the current page, optionally with a [note].
+  /// Adds a bookmark on [currentPage], optionally with a [note].
   ///
   /// No-op if the page is already bookmarked.
-  /// Throws [BookmarkServiceException] on DB failure so the widget can
-  /// surface a SnackBar.
   Future<void> addBookmark({String? note}) async {
     if (_bookmarks.any((b) => b.page == _currentPage)) {
       _log('Page $_currentPage already bookmarked');
       return;
     }
-
     final bm = Bookmark.create(pdfId: pdfId, page: _currentPage, note: note);
     final rowId = await BookmarkService.instance.addBookmark(bm);
     _log('Bookmark added rowId=$rowId page=$_currentPage');
@@ -159,8 +201,24 @@ class PdfViewerController extends ChangeNotifier {
     await _reloadBookmarks();
   }
 
-  /// Navigates to [page] with animation.
+  /// Updates the note on the bookmark identified by [id].
+  ///
+  /// Pass `null` to [note] to clear an existing note.
+  Future<void> updateBookmarkNote(int id, String? note) async {
+    await BookmarkService.instance.updateNote(id, note);
+    _log('Bookmark note updated id=$id');
+    await _reloadBookmarks();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Navigation
+  // ---------------------------------------------------------------------------
+
+  /// Navigates to the given zero-based [page] with animation.
+  ///
+  /// No-op if [page] equals [currentPage] (prevents redundant renders).
   Future<void> goToPage(int page) async {
+    if (page == _currentPage) return;
     await _pdfViewController?.setPage(page: page, withAnimation: true);
   }
 
@@ -168,18 +226,13 @@ class PdfViewerController extends ChangeNotifier {
   // Private helpers
   // ---------------------------------------------------------------------------
 
-  /// Copies the Flutter asset to a per-pdf temp file. Returns the path.
-  ///
-  /// Uses [pdfId] (sanitised) as the filename to avoid collisions and allow
-  /// caching across hot-restarts.
   Future<String> _extractAsset() async {
-    final dir  = await getTemporaryDirectory();
+    final dir = await getTemporaryDirectory();
     final safe = pdfId.replaceAll(RegExp(r'[^a-zA-Z0-9_\-]'), '_');
     final file = File('${dir.path}/$safe.pdf');
-
     if (!file.existsSync()) {
       _log('Extracting $assetPath → ${file.path}');
-      final data = await rootBundle.load(assetPath);
+      final data = await rootBundle.load(assetPath!);
       await file.writeAsBytes(
         data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
       );
@@ -189,24 +242,13 @@ class PdfViewerController extends ChangeNotifier {
     return file.path;
   }
 
-  /// Creates a sentinel progress row when none exists.
+  /// Debounced version of [_persistProgress].
   ///
-  /// The bookmarks table has a FOREIGN KEY on reading_progress(pdf_id).
-  /// Without this guard, the very first bookmark INSERT on a fresh install
-  /// silently fails with a FK violation.
-  Future<void> _ensureProgressExists() async {
-    final existing = await ProgressService.instance.getProgress(pdfId);
-    if (existing == null) {
-      await ProgressService.instance.saveProgress(
-        ReadingProgress.create(
-          pdfId: pdfId,
-          currentPage: 0,
-          totalPages: 0,
-          title: pdfTitle,
-        ),
-      );
-      _log('FK-anchor row created');
-    }
+  /// Rapid page-turn callbacks (swipe bursts, jump-to-page) collapse into a
+  /// single write that fires [_kProgressDebounce] after the last call.
+  void _schedulePersistProgress() {
+    _progressDebounce?.cancel();
+    _progressDebounce = Timer(_kProgressDebounce, _persistProgress);
   }
 
   Future<void> _persistProgress() async {
@@ -220,6 +262,7 @@ class PdfViewerController extends ChangeNotifier {
           currentPage: _currentPage,
           totalPages: _totalPages,
           title: pdfTitle,
+          filePath: onDeviceFilePath,
         ),
       );
     } catch (e) {

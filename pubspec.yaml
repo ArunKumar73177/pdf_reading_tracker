@@ -2,17 +2,18 @@ name: pdf_reading_tracker
 
 description: >
   A complete Flutter PDF reader package — renders PDFs, tracks reading
-  progress, manages bookmarks, and supports PDF merge and split operations,
-  all backed by SQLite.
+  progress, manages bookmarks, supports PDF merge and split operations,
+  lets users pick PDFs from their device, and shows recent/continue-reading
+  sections. All backed by SQLite.
 
-version: 2.0.1
+version: 2.1.0
 
 homepage: https://github.com/ArunKumar73177/pdf_reading_tracker
 repository: https://github.com/ArunKumar73177/pdf_reading_tracker
 issue_tracker: https://github.com/ArunKumar73177/pdf_reading_tracker/issues
 
 environment:
-  sdk: ^3.9.2
+  sdk: ^3.3.0
 
 dependencies:
   flutter:
@@ -26,8 +27,11 @@ dependencies:
   # PDF Rendering
   alh_pdf_view: ^2.3.3
 
-  # PDF Processing (merge / split / future operations)
+  # PDF Processing (merge / split)
   syncfusion_flutter_pdf: ^27.1.48
+
+  # User PDF picking
+  file_picker: ^8.1.2
 
 dev_dependencies:
   flutter_test:

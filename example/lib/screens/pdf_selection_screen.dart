@@ -1,12 +1,23 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:pdf_reading_tracker/pdf_reading_tracker.dart';
 
-import '../models/pdf_document.dart';
 import 'pdf_operations_screen.dart';
-import 'pdf_reader_screen.dart';
+import 'recent_pdfs_screen.dart';
 
-/// Landing screen — presents the PDF catalogue plus a button to the
-/// PDF Operations screen (merge & split demo).
+// ---------------------------------------------------------------------------
+// Landing screen — v2.1.0
+//
+// No static catalogue. All PDFs come from:
+//   • The device file picker (FAB → "Open PDF")
+//   • The "Recent PDFs" history (SQLite via getRecentlyRead)
+//
+// Sections:
+//   1. Continue Reading  — in-progress (0 < progress < 100 %)
+//   2. Recent PDFs       — all opened PDFs, most-recent first
+// ---------------------------------------------------------------------------
+
 class PdfSelectionScreen extends StatefulWidget {
   const PdfSelectionScreen({super.key});
 
@@ -15,47 +26,107 @@ class PdfSelectionScreen extends StatefulWidget {
 }
 
 class _PdfSelectionScreenState extends State<PdfSelectionScreen> {
-  final Map<String, ReadingProgress?> _progressMap = {};
+  List<ReadingProgress> _recentlyRead = [];
   bool _loading = true;
 
   @override
   void initState() {
     super.initState();
-    _loadAllProgress();
+    _refresh();
   }
 
-  Future<void> _loadAllProgress() async {
-    final results = await Future.wait(
-      kPdfCatalogue.map((doc) async {
-        final progress = await PdfReadingTracker.getProgress(doc.id);
-        return MapEntry(doc.id, progress);
-      }),
-    );
-    if (!mounted) return;
-    setState(() {
-      _progressMap
-        ..clear()
-        ..addEntries(results);
-      _loading = false;
-    });
+  // ---------------------------------------------------------------------------
+  // Data loading
+  // ---------------------------------------------------------------------------
+
+  Future<void> _refresh() async {
+    setState(() => _loading = true);
+    try {
+      final recents = await PdfReadingTracker.getRecentlyRead(limit: 30);
+      if (!mounted) return;
+      setState(() {
+        _recentlyRead = recents;
+        _loading = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
   }
 
-  Future<void> _openDocument(PdfDocument document) async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => PdfReaderScreen(document: document)),
-    );
-    await _loadAllProgress();
+  // ---------------------------------------------------------------------------
+  // Navigation
+  // ---------------------------------------------------------------------------
+
+  Future<void> _openRecentProgress(ReadingProgress progress) async {
+    if (progress.filePath == null) return; // should not happen in picker-first
+
+    if (!File(progress.filePath!).existsSync()) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(
+          '"${progress.title ?? 'PDF'}" could not be found. '
+              'It may have been moved or deleted.',
+        ),
+        backgroundColor: Theme.of(context).colorScheme.error,
+      ));
+      return;
+    }
+
+    await Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => Scaffold(
+        body: PdfReadingTrackerViewer(
+          pdfId: progress.pdfId,
+          pdfTitle: progress.title ?? 'PDF',
+          filePath: progress.filePath,
+        ),
+      ),
+    ));
+    await _refresh();
   }
 
-  void _openOperations() {
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const PdfOperationsScreen()),
-    );
+  Future<void> _pickAndOpenPdf() async {
+    try {
+      final picked = await PdfPickerService.pickPdf();
+      if (picked == null || !mounted) return;
+
+      await Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => Scaffold(
+          body: PdfReadingTrackerViewer(
+            pdfId: picked.pdfId,
+            pdfTitle: picked.title,
+            filePath: picked.filePath,
+          ),
+        ),
+      ));
+      await _refresh();
+    } on PdfPickerException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(e.message),
+        backgroundColor: Theme.of(context).colorScheme.error,
+      ));
+    }
   }
+
+  void _openOperations() => Navigator.of(context).push(
+    MaterialPageRoute(builder: (_) => const PdfOperationsScreen()),
+  );
+
+  void _openRecentScreen() => Navigator.of(context)
+      .push(MaterialPageRoute(builder: (_) => const RecentPdfsScreen()))
+      .then((_) => _refresh());
+
+  // ---------------------------------------------------------------------------
+  // Build
+  // ---------------------------------------------------------------------------
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+
+    final continueReading = _recentlyRead
+        .where((p) => p.currentPage > 0 && p.progressPct < 100.0)
+        .toList();
 
     return Scaffold(
       appBar: AppBar(
@@ -65,89 +136,100 @@ class _PdfSelectionScreenState extends State<PdfSelectionScreen> {
         foregroundColor: cs.onPrimaryContainer,
         actions: [
           IconButton(
+            icon: const Icon(Icons.history_rounded),
+            tooltip: 'All recent PDFs',
+            onPressed: _openRecentScreen,
+          ),
+          IconButton(
             icon: const Icon(Icons.build_rounded),
-            tooltip: 'PDF Operations (Merge & Split)',
+            tooltip: 'PDF Operations (merge / split)',
             onPressed: _openOperations,
           ),
         ],
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
-          : ListView.builder(
-        padding: const EdgeInsets.all(16),
-        itemCount: kPdfCatalogue.length + 1, // +1 for operations card
-        itemBuilder: (context, index) {
-          // ── Operations card (first item) ──────────────────────────
-          if (index == 0) {
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 16),
-              child: _OperationsCard(onTap: _openOperations),
-            );
-          }
-          final doc = kPdfCatalogue[index - 1];
-          final progress = _progressMap[doc.id];
-          return _PdfDocumentCard(
-            document: doc,
-            progress: progress,
-            onTap: () => _openDocument(doc),
-          );
-        },
+          : RefreshIndicator(
+        onRefresh: _refresh,
+        child: _recentlyRead.isEmpty
+            ? _EmptyState(onPick: _pickAndOpenPdf)
+            : ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            // ── Continue Reading ──────────────────────────────
+            if (continueReading.isNotEmpty) ...[
+              _SectionHeader(
+                icon: Icons.play_circle_outline_rounded,
+                label: 'Continue reading',
+              ),
+              const SizedBox(height: 8),
+              ...continueReading.map((p) => _PdfCard(
+                progress: p,
+                onTap: () => _openRecentProgress(p),
+              )),
+              const SizedBox(height: 24),
+            ],
+
+            // ── Recent PDFs ───────────────────────────────────
+            _SectionHeader(
+              icon: Icons.history_rounded,
+              label: 'Recent PDFs',
+            ),
+            const SizedBox(height: 8),
+            ..._recentlyRead.map((p) => _PdfCard(
+              progress: p,
+              onTap: () => _openRecentProgress(p),
+            )),
+          ],
+        ),
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _pickAndOpenPdf,
+        icon: const Icon(Icons.upload_file_rounded),
+        label: const Text('Open PDF'),
+        tooltip: 'Pick a PDF from your device',
       ),
     );
   }
 }
 
 // ---------------------------------------------------------------------------
-// Operations promo card
+// Empty state
 // ---------------------------------------------------------------------------
 
-class _OperationsCard extends StatelessWidget {
-  const _OperationsCard({required this.onTap});
-  final VoidCallback onTap;
+class _EmptyState extends StatelessWidget {
+  const _EmptyState({required this.onPick});
+  final VoidCallback onPick;
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
-
-    return Card(
-      elevation: 0,
-      color: cs.tertiaryContainer,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Row(
-            children: [
-              CircleAvatar(
-                backgroundColor: cs.tertiary,
-                foregroundColor: cs.onTertiary,
-                child: const Icon(Icons.build_rounded),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('PDF Operations',
-                        style: tt.titleMedium?.copyWith(
-                            fontWeight: FontWeight.bold,
-                            color: cs.onTertiaryContainer)),
-                    const SizedBox(height: 4),
-                    Text('Merge & Split PDFs',
-                        style: tt.bodySmall
-                            ?.copyWith(color: cs.onTertiaryContainer)),
-                  ],
-                ),
-              ),
-              Icon(Icons.chevron_right_rounded,
-                  color: cs.onTertiaryContainer),
-            ],
-          ),
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(40),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.picture_as_pdf_rounded,
+                size: 72, color: cs.onSurfaceVariant.withAlpha(102)),
+            const SizedBox(height: 24),
+            Text('No PDFs yet',
+                style: tt.titleLarge?.copyWith(color: cs.onSurfaceVariant)),
+            const SizedBox(height: 10),
+            Text(
+              'Tap "Open PDF" to pick a PDF from your device.\n'
+                  'Your reading progress and bookmarks are saved automatically.',
+              textAlign: TextAlign.center,
+              style: tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
+            ),
+            const SizedBox(height: 32),
+            FilledButton.icon(
+              onPressed: onPick,
+              icon: const Icon(Icons.upload_file_rounded),
+              label: const Text('Open PDF'),
+            ),
+          ],
         ),
       ),
     );
@@ -155,101 +237,123 @@ class _OperationsCard extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
-// Document card (unchanged from original)
+// Section header
 // ---------------------------------------------------------------------------
 
-class _PdfDocumentCard extends StatelessWidget {
-  const _PdfDocumentCard({
-    required this.document,
-    required this.progress,
-    required this.onTap,
-  });
+class _SectionHeader extends StatelessWidget {
+  const _SectionHeader({required this.icon, required this.label});
+  final IconData icon;
+  final String label;
 
-  final PdfDocument document;
-  final ReadingProgress? progress;
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+    return Row(
+      children: [
+        Icon(icon, size: 18, color: cs.primary),
+        const SizedBox(width: 8),
+        Text(
+          label,
+          style: tt.titleSmall?.copyWith(
+            color: cs.primary,
+            fontWeight: FontWeight.bold,
+            letterSpacing: 0.5,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// PDF card  (ReadingProgress-based)
+// ---------------------------------------------------------------------------
+
+class _PdfCard extends StatelessWidget {
+  const _PdfCard({required this.progress, required this.onTap});
+  final ReadingProgress progress;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
-    final hasProgress = progress != null && progress!.totalPages > 0;
-    final pct =
-    hasProgress ? (progress!.progressPct).toStringAsFixed(1) : null;
+    final fileExists = progress.filePath == null ||
+        File(progress.filePath!).existsSync();
+    final title = progress.title ?? 'Unknown PDF';
+    final pct = progress.progressPct.toStringAsFixed(1);
 
     return Card(
-      margin: const EdgeInsets.only(bottom: 16),
+      margin: const EdgeInsets.only(bottom: 10),
       elevation: 0,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: cs.outlineVariant),
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(
+          color: fileExists ? cs.outlineVariant : cs.errorContainer,
+        ),
       ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: onTap,
+        onTap: fileExists ? onTap : null,
         child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: Row(
             children: [
-              Row(
-                children: [
-                  CircleAvatar(
-                    backgroundColor: cs.secondaryContainer,
-                    foregroundColor: cs.onSecondaryContainer,
-                    child: const Icon(Icons.picture_as_pdf_rounded),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(document.title,
-                            style: tt.titleMedium
-                                ?.copyWith(fontWeight: FontWeight.bold)),
-                        const SizedBox(height: 2),
-                        Text(document.subtitle,
-                            style: tt.bodySmall
-                                ?.copyWith(color: cs.onSurfaceVariant),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis),
-                      ],
-                    ),
-                  ),
-                  Icon(Icons.chevron_right_rounded,
-                      color: cs.onSurfaceVariant),
-                ],
+              // Icon
+              CircleAvatar(
+                backgroundColor: fileExists
+                    ? cs.secondaryContainer
+                    : cs.errorContainer,
+                foregroundColor: fileExists
+                    ? cs.onSecondaryContainer
+                    : cs.onErrorContainer,
+                child: const Icon(Icons.upload_file_rounded),
               ),
-              if (hasProgress) ...[
-                const SizedBox(height: 16),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(4),
-                  child: LinearProgressIndicator(
-                    value: progress!.progressPct / 100,
-                    backgroundColor: cs.surfaceContainerHighest,
-                    valueColor: AlwaysStoppedAnimation<Color>(cs.primary),
-                    minHeight: 5,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              const SizedBox(width: 14),
+              // Text
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                        'Page ${progress!.currentPage + 1} of ${progress!.totalPages}',
+                      title,
+                      style: tt.bodyLarge?.copyWith(
+                        fontWeight: FontWeight.w600,
+                        color: fileExists ? null : cs.onSurfaceVariant,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 4),
+                    if (progress.totalPages > 0)
+                      Text(
+                        'Page ${progress.currentPage + 1} of '
+                            '${progress.totalPages}  ·  $pct%',
                         style: tt.bodySmall
-                            ?.copyWith(color: cs.onSurfaceVariant)),
-                    Text('$pct% read',
-                        style: tt.bodySmall?.copyWith(
-                            color: cs.primary,
-                            fontWeight: FontWeight.w600)),
+                            ?.copyWith(color: cs.onSurfaceVariant),
+                      ),
+                    if (!fileExists)
+                      Text(
+                        'File not found',
+                        style: tt.bodySmall?.copyWith(color: cs.error),
+                      ),
                   ],
                 ),
-              ] else ...[
-                const SizedBox(height: 12),
-                Text('Not started',
-                    style: tt.bodySmall?.copyWith(color: cs.outline)),
-              ],
+              ),
+              // Progress ring
+              if (progress.totalPages > 0 && fileExists)
+                SizedBox(
+                  width: 36,
+                  height: 36,
+                  child: CircularProgressIndicator(
+                    value: progress.progressPct / 100,
+                    strokeWidth: 3,
+                    backgroundColor: cs.surfaceContainerHighest,
+                    valueColor:
+                    AlwaysStoppedAnimation<Color>(cs.primary),
+                  ),
+                ),
             ],
           ),
         ),

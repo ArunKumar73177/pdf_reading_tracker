@@ -1,23 +1,29 @@
 import 'dart:io';
 
 import 'package:alh_pdf_view/alh_pdf_view.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:pdf_reading_tracker/pdf_reading_tracker.dart';
 
 // ---------------------------------------------------------------------------
-// PDF Operations Screen
+// PDF Operations Screen — v2.1.0
+//
+// Merge tab
+//   • User selects 2+ PDFs via FilePicker
+//   • Selected files shown in a dismissible list
+//   • "Merge" button produces output, opens result in viewer
+//
+// Split tab
+//   • User selects one PDF via FilePicker
+//   • User enters pages-per-chunk (validated; default 5)
+//   • "Split" button produces parts, listed with individual "Open" buttons
+//
+// All heavy work is already off the main thread via Isolate.run inside
+// PdfMergeService / PdfSplitService.
 // ---------------------------------------------------------------------------
 
-/// Demonstrates [PdfMergeService] and [PdfSplitService] in the example app.
-///
-/// ### Merge workflow
-///   sample.pdf + sample2.pdf  →  merged.pdf  →  opens in ALH PDF View
-///
-/// ### Split workflow
-///   sample.pdf  →  split every 5 pages  →  lists part_1.pdf … part_N.pdf
-///   Tap any part to open it in ALH PDF View
 class PdfOperationsScreen extends StatefulWidget {
   const PdfOperationsScreen({super.key});
 
@@ -30,11 +36,14 @@ class _PdfOperationsScreenState extends State<PdfOperationsScreen>
   late final TabController _tabController;
 
   // ── Merge state ─────────────────────────────────────────────────────────────
+  final List<PlatformFile> _mergeFiles = [];
   bool _merging = false;
   String? _mergedPath;
   String? _mergeError;
 
   // ── Split state ─────────────────────────────────────────────────────────────
+  PlatformFile? _splitFile;
+  final _pagesCtrl = TextEditingController(text: '5');
   bool _splitting = false;
   List<String> _splitParts = [];
   String? _splitError;
@@ -48,27 +57,46 @@ class _PdfOperationsScreenState extends State<PdfOperationsScreen>
   @override
   void dispose() {
     _tabController.dispose();
+    _pagesCtrl.dispose();
     super.dispose();
   }
 
   // ---------------------------------------------------------------------------
-  // Asset extraction helper
+  // File picking
   // ---------------------------------------------------------------------------
 
-  /// Copies a Flutter asset to a writable temp file and returns its path.
-  ///
-  /// Both [PdfMergeService] and [PdfSplitService] operate on file-system paths;
-  /// Flutter assets must be extracted first.
-  Future<String> _extractAsset(String assetPath, String fileName) async {
-    final dir = await getTemporaryDirectory();
-    final file = File('${dir.path}/$fileName');
-    if (!file.existsSync()) {
-      final data = await rootBundle.load(assetPath);
-      await file.writeAsBytes(
-        data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
-      );
-    }
-    return file.path;
+  Future<void> _pickMergeFiles() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['pdf'],
+      allowMultiple: true,
+    );
+    if (result == null || !mounted) return;
+
+    // Deduplicate by path.
+    final existingPaths = _mergeFiles.map((f) => f.path).toSet();
+    final added = result.files
+        .where((f) => f.path != null && !existingPaths.contains(f.path))
+        .toList();
+
+    setState(() {
+      _mergeFiles.addAll(added);
+      _mergedPath = null;
+      _mergeError = null;
+    });
+  }
+
+  Future<void> _pickSplitFile() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['pdf'],
+    );
+    if (result == null || !mounted) return;
+    setState(() {
+      _splitFile = result.files.first;
+      _splitParts = [];
+      _splitError = null;
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -76,6 +104,13 @@ class _PdfOperationsScreenState extends State<PdfOperationsScreen>
   // ---------------------------------------------------------------------------
 
   Future<void> _runMerge() async {
+    if (_mergeFiles.length < 2) {
+      setState(() => _mergeError = 'Select at least two PDF files to merge.');
+      return;
+    }
+
+    final paths = _mergeFiles.map((f) => f.path!).toList();
+
     setState(() {
       _merging = true;
       _mergedPath = null;
@@ -83,27 +118,30 @@ class _PdfOperationsScreenState extends State<PdfOperationsScreen>
     });
 
     try {
-      // Extract both sample assets to disk so the merge service can read them.
-      final path1 = await _extractAsset('assets/sample.pdf', 'op_sample1.pdf');
-      final path2 =
-      await _extractAsset('assets/sample2.pdf', 'op_sample2.pdf');
-
       final dir = await getTemporaryDirectory();
-      final outPath = '${dir.path}/merged.pdf';
+      final outPath = p.join(
+        dir.path,
+        'merged_${DateTime.now().millisecondsSinceEpoch}.pdf',
+      );
 
       final merged = await PdfMergeService.merge(
-        inputPaths: [path1, path2],
+        inputPaths: paths,
         outputPath: outPath,
       );
 
       if (mounted) {
         setState(() => _mergedPath = merged);
-        _showSnackBar('✓ Merged successfully', isError: false);
+        _showSnackBar('Merged successfully', isError: false);
       }
     } on PdfMergeFileNotFoundException catch (e) {
-      if (mounted) setState(() => _mergeError = 'File not found: ${e.missingPath}');
+      if (mounted) {
+        setState(() => _mergeError = 'File not found: ${p.basename(e.missingPath)}');
+      }
     } on PdfMergeCorruptFileException catch (e) {
-      if (mounted) setState(() => _mergeError = 'Corrupt PDF: ${e.corruptPath}');
+      if (mounted) {
+        setState(() =>
+        _mergeError = 'Corrupt or password-protected PDF: ${p.basename(e.corruptPath)}');
+      }
     } on PdfMergeException catch (e) {
       if (mounted) setState(() => _mergeError = e.message);
     } catch (e) {
@@ -118,6 +156,17 @@ class _PdfOperationsScreenState extends State<PdfOperationsScreen>
   // ---------------------------------------------------------------------------
 
   Future<void> _runSplit() async {
+    if (_splitFile == null || _splitFile!.path == null) {
+      setState(() => _splitError = 'Select a PDF to split.');
+      return;
+    }
+
+    final pagesPerFile = int.tryParse(_pagesCtrl.text.trim());
+    if (pagesPerFile == null || pagesPerFile < 1) {
+      setState(() => _splitError = 'Enter a valid number of pages per chunk.');
+      return;
+    }
+
     setState(() {
       _splitting = true;
       _splitParts = [];
@@ -125,23 +174,28 @@ class _PdfOperationsScreenState extends State<PdfOperationsScreen>
     });
 
     try {
-      final sourcePath =
-      await _extractAsset('assets/sample.pdf', 'op_sample_split.pdf');
-
+      final dir = await getTemporaryDirectory();
       final parts = await PdfSplitService.split(
-        pdfPath: sourcePath,
-        pagesPerFile: 5,
-        baseFileName: 'sample',
+        pdfPath: _splitFile!.path!,
+        pagesPerFile: pagesPerFile,
+        outputDir: dir.path,
+        baseFileName:
+        p.basenameWithoutExtension(_splitFile!.name).replaceAll(' ', '_'),
       );
 
       if (mounted) {
         setState(() => _splitParts = parts);
-        _showSnackBar('✓ Split into ${parts.length} file(s)', isError: false);
+        _showSnackBar(
+          'Split into ${parts.length} file${parts.length == 1 ? '' : 's'}',
+          isError: false,
+        );
       }
     } on PdfSplitFileNotFoundException catch (e) {
       if (mounted) setState(() => _splitError = 'File not found: $e');
     } on PdfSplitInvalidRangeException catch (e) {
-      if (mounted) setState(() => _splitError = 'Invalid range: ${e.message}');
+      if (mounted) {
+        setState(() => _splitError = 'Invalid range: ${e.message}');
+      }
     } on PdfSplitException catch (e) {
       if (mounted) setState(() => _splitError = e.message);
     } catch (e) {
@@ -155,24 +209,19 @@ class _PdfOperationsScreenState extends State<PdfOperationsScreen>
   // Navigation helpers
   // ---------------------------------------------------------------------------
 
-  void _openPdf(BuildContext context, String path, String title) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => _PdfFileViewer(filePath: path, title: title),
-      ),
-    );
+  void _openPdf(String path, String title) {
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => _PdfFileViewer(filePath: path, title: title),
+    ));
   }
 
   void _showSnackBar(String message, {required bool isError}) {
     if (!mounted) return;
     final cs = Theme.of(context).colorScheme;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: isError ? cs.error : cs.primary,
-        duration: const Duration(seconds: 3),
-      ),
-    );
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(message),
+      backgroundColor: isError ? cs.error : cs.primary,
+    ));
   }
 
   // ---------------------------------------------------------------------------
@@ -182,7 +231,6 @@ class _PdfOperationsScreenState extends State<PdfOperationsScreen>
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-
     return Scaffold(
       appBar: AppBar(
         title: const Text('PDF Operations'),
@@ -199,47 +247,18 @@ class _PdfOperationsScreenState extends State<PdfOperationsScreen>
       body: TabBarView(
         controller: _tabController,
         children: [
-          _MergeTab(
-            merging: _merging,
-            mergedPath: _mergedPath,
-            error: _mergeError,
-            onMerge: _runMerge,
-            onOpen: (path) => _openPdf(context, path, 'merged.pdf'),
-          ),
-          _SplitTab(
-            splitting: _splitting,
-            parts: _splitParts,
-            error: _splitError,
-            onSplit: _runSplit,
-            onOpenPart: (path, name) => _openPdf(context, path, name),
-          ),
+          _buildMergeTab(),
+          _buildSplitTab(),
         ],
       ),
     );
   }
-}
 
-// ---------------------------------------------------------------------------
-// Merge tab widget
-// ---------------------------------------------------------------------------
+  // ---------------------------------------------------------------------------
+  // Merge tab
+  // ---------------------------------------------------------------------------
 
-class _MergeTab extends StatelessWidget {
-  const _MergeTab({
-    required this.merging,
-    required this.mergedPath,
-    required this.error,
-    required this.onMerge,
-    required this.onOpen,
-  });
-
-  final bool merging;
-  final String? mergedPath;
-  final String? error;
-  final VoidCallback onMerge;
-  final void Function(String path) onOpen;
-
-  @override
-  Widget build(BuildContext context) {
+  Widget _buildMergeTab() {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
 
@@ -248,127 +267,205 @@ class _MergeTab extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // ── Info card ──────────────────────────────────────────────────────
+          // Info
           _InfoCard(
             icon: Icons.merge_type_rounded,
-            title: 'Merge two PDFs',
-            body:
-            'Combines sample.pdf + sample2.pdf into a single merged.pdf '
-                'using PdfMergeService.\n\n'
-                'Uses createTemplate() + drawPdfTemplate() — the correct '
-                'Syncfusion Flutter API for copying page content.',
+            title: 'Merge PDFs',
+            body: 'Select two or more PDF files from your device. '
+                'They will be combined into a single PDF in the order shown.',
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 20),
 
-          // ── Merge button ───────────────────────────────────────────────────
+          // File list
+          if (_mergeFiles.isNotEmpty) ...[
+            Text('Selected files (${_mergeFiles.length})',
+                style: tt.labelMedium
+                    ?.copyWith(color: cs.onSurfaceVariant)),
+            const SizedBox(height: 8),
+            ..._mergeFiles.asMap().entries.map((entry) {
+              final idx = entry.key;
+              final file = entry.value;
+              return Card(
+                elevation: 0,
+                margin: const EdgeInsets.only(bottom: 6),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  side: BorderSide(color: cs.outlineVariant),
+                ),
+                child: ListTile(
+                  dense: true,
+                  leading: CircleAvatar(
+                    radius: 14,
+                    backgroundColor: cs.secondaryContainer,
+                    foregroundColor: cs.onSecondaryContainer,
+                    child: Text('${idx + 1}',
+                        style: const TextStyle(fontSize: 11)),
+                  ),
+                  title: Text(file.name,
+                      maxLines: 1, overflow: TextOverflow.ellipsis),
+                  subtitle: Text(_fileSizeLabel(file.size)),
+                  trailing: IconButton(
+                    icon: const Icon(Icons.close_rounded, size: 18),
+                    tooltip: 'Remove',
+                    onPressed: () => setState(() {
+                      _mergeFiles.removeAt(idx);
+                      _mergedPath = null;
+                      _mergeError = null;
+                    }),
+                  ),
+                ),
+              );
+            }),
+            const SizedBox(height: 12),
+          ],
+
+          // Add files button
+          OutlinedButton.icon(
+            onPressed: _merging ? null : _pickMergeFiles,
+            icon: const Icon(Icons.add_rounded),
+            label: Text(_mergeFiles.isEmpty ? 'Select PDFs' : 'Add more PDFs'),
+          ),
+          const SizedBox(height: 12),
+
+          // Merge button
           FilledButton.icon(
-            onPressed: merging ? null : onMerge,
-            icon: merging
+            onPressed: (_merging || _mergeFiles.length < 2) ? null : _runMerge,
+            icon: _merging
                 ? const SizedBox(
               width: 18,
               height: 18,
               child: CircularProgressIndicator(strokeWidth: 2),
             )
                 : const Icon(Icons.merge_type_rounded),
-            label: Text(merging ? 'Merging…' : 'Merge PDFs'),
+            label: Text(_merging ? 'Merging…' : 'Merge PDFs'),
           ),
           const SizedBox(height: 24),
 
-          // ── Result ─────────────────────────────────────────────────────────
-          if (error != null)
-            _ErrorBanner(message: error!)
-          else if (mergedPath != null)
+          // Error / result
+          if (_mergeError != null)
+            _ErrorBanner(message: _mergeError!)
+          else if (_mergedPath != null)
             _ResultCard(
               icon: Icons.picture_as_pdf_rounded,
-              title: 'merged.pdf',
-              subtitle: mergedPath!,
+              title: p.basename(_mergedPath!),
+              subtitle: _mergedPath!,
               actionLabel: 'Open merged PDF',
-              onAction: () => onOpen(mergedPath!),
+              onAction: () => _openPdf(_mergedPath!, 'Merged PDF'),
             ),
         ],
       ),
     );
   }
-}
 
-// ---------------------------------------------------------------------------
-// Split tab widget
-// ---------------------------------------------------------------------------
+  // ---------------------------------------------------------------------------
+  // Split tab
+  // ---------------------------------------------------------------------------
 
-class _SplitTab extends StatelessWidget {
-  const _SplitTab({
-    required this.splitting,
-    required this.parts,
-    required this.error,
-    required this.onSplit,
-    required this.onOpenPart,
-  });
-
-  final bool splitting;
-  final List<String> parts;
-  final String? error;
-  final VoidCallback onSplit;
-  final void Function(String path, String name) onOpenPart;
-
-  @override
-  Widget build(BuildContext context) {
+  Widget _buildSplitTab() {
     final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // ── Info card ──────────────────────────────────────────────────────
+          // Info
           _InfoCard(
             icon: Icons.call_split_rounded,
-            title: 'Split a PDF',
-            body:
-            'Splits sample.pdf into chunks of 5 pages each using '
-                'PdfSplitService.\n\n'
-                'Generates sample_part_1.pdf, sample_part_2.pdf, … '
-                'Tap any part to open it.',
+            title: 'Split PDF',
+            body: 'Select a PDF and enter how many pages each chunk should '
+                'contain. The last chunk may be shorter.',
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 20),
 
-          // ── Split button ───────────────────────────────────────────────────
+          // Selected file
+          if (_splitFile != null)
+            Card(
+              elevation: 0,
+              margin: const EdgeInsets.only(bottom: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+                side: BorderSide(color: cs.outlineVariant),
+              ),
+              child: ListTile(
+                leading: Icon(Icons.picture_as_pdf_rounded,
+                    color: cs.primary),
+                title: Text(_splitFile!.name,
+                    maxLines: 1, overflow: TextOverflow.ellipsis),
+                subtitle: Text(_fileSizeLabel(_splitFile!.size)),
+                trailing: IconButton(
+                  icon: const Icon(Icons.close_rounded, size: 18),
+                  tooltip: 'Clear',
+                  onPressed: () => setState(() {
+                    _splitFile = null;
+                    _splitParts = [];
+                    _splitError = null;
+                  }),
+                ),
+              ),
+            ),
+
+          // Pick file
+          OutlinedButton.icon(
+            onPressed: _splitting ? null : _pickSplitFile,
+            icon: const Icon(Icons.upload_file_rounded),
+            label: Text(_splitFile == null ? 'Select PDF' : 'Change PDF'),
+          ),
+          const SizedBox(height: 16),
+
+          // Pages per chunk
+          TextField(
+            controller: _pagesCtrl,
+            enabled: !_splitting,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(
+              labelText: 'Pages per chunk',
+              hintText: 'e.g. 5',
+              border: OutlineInputBorder(),
+              suffixText: 'pages',
+            ),
+            onChanged: (_) => setState(() {
+              _splitParts = [];
+              _splitError = null;
+            }),
+          ),
+          const SizedBox(height: 16),
+
+          // Split button
           FilledButton.icon(
-            onPressed: splitting ? null : onSplit,
-            icon: splitting
+            onPressed: (_splitting || _splitFile == null) ? null : _runSplit,
+            icon: _splitting
                 ? const SizedBox(
               width: 18,
               height: 18,
               child: CircularProgressIndicator(strokeWidth: 2),
             )
                 : const Icon(Icons.call_split_rounded),
-            label: Text(splitting ? 'Splitting…' : 'Split PDF (5 pages each)'),
+            label: Text(_splitting ? 'Splitting…' : 'Split PDF'),
           ),
           const SizedBox(height: 24),
 
-          // ── Error ──────────────────────────────────────────────────────────
-          if (error != null) _ErrorBanner(message: error!),
+          // Error
+          if (_splitError != null) _ErrorBanner(message: _splitError!),
 
-          // ── Parts list ─────────────────────────────────────────────────────
-          if (parts.isNotEmpty) ...[
+          // Parts list
+          if (_splitParts.isNotEmpty) ...[
             Text(
-              '${parts.length} part(s) generated',
-              style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                color: cs.onSurfaceVariant,
-              ),
+              '${_splitParts.length} part${_splitParts.length == 1 ? '' : 's'} generated',
+              style: tt.labelMedium?.copyWith(color: cs.onSurfaceVariant),
             ),
             const SizedBox(height: 12),
-            ...parts.asMap().entries.map((entry) {
-              final idx = entry.key;
-              final path = entry.value;
-              final name = 'sample_part_${idx + 1}.pdf';
+            ..._splitParts.asMap().entries.map((entry) {
+              final name = p.basename(entry.value);
               return Padding(
                 padding: const EdgeInsets.only(bottom: 10),
                 child: _ResultCard(
                   icon: Icons.description_outlined,
                   title: name,
-                  subtitle: path,
+                  subtitle: entry.value,
                   actionLabel: 'Open',
-                  onAction: () => onOpenPart(path, name),
+                  onAction: () => _openPdf(entry.value, name),
                 ),
               );
             }),
@@ -376,6 +473,16 @@ class _SplitTab extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Helpers
+  // ---------------------------------------------------------------------------
+
+  static String _fileSizeLabel(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
   }
 }
 
@@ -389,7 +496,6 @@ class _InfoCard extends StatelessWidget {
     required this.title,
     required this.body,
   });
-
   final IconData icon;
   final String title;
   final String body;
@@ -398,7 +504,6 @@ class _InfoCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
-
     return Card(
       elevation: 0,
       color: cs.secondaryContainer,
@@ -439,7 +544,6 @@ class _ResultCard extends StatelessWidget {
     required this.actionLabel,
     required this.onAction,
   });
-
   final IconData icon;
   final String title;
   final String subtitle;
@@ -450,7 +554,6 @@ class _ResultCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
-
     return Card(
       elevation: 0,
       shape: RoundedRectangleBorder(
@@ -477,8 +580,8 @@ class _ResultCard extends StatelessWidget {
                   const SizedBox(height: 2),
                   Text(
                     subtitle,
-                    style: tt.bodySmall
-                        ?.copyWith(color: cs.onSurfaceVariant),
+                    style:
+                    tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -506,6 +609,7 @@ class _ErrorBanner extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.all(16),
+      margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
         color: cs.errorContainer,
         borderRadius: BorderRadius.circular(12),
@@ -530,20 +634,17 @@ class _ErrorBanner extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
-// Inline PDF viewer for generated files (uses ALH PDF View on a file path)
+// Inline PDF viewer for generated files
 // ---------------------------------------------------------------------------
 
-/// Opens a file-system PDF directly — used for generated merge/split outputs.
 class _PdfFileViewer extends StatelessWidget {
   const _PdfFileViewer({required this.filePath, required this.title});
-
   final String filePath;
   final String title;
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-
     return Scaffold(
       appBar: AppBar(
         title: Text(title, overflow: TextOverflow.ellipsis),
@@ -556,12 +657,10 @@ class _PdfFileViewer extends StatelessWidget {
         enableDoubleTap: true,
         backgroundColor: cs.surface,
         onError: (err) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('PDF error: $err'),
-              backgroundColor: cs.error,
-            ),
-          );
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('PDF error: $err'),
+            backgroundColor: cs.error,
+          ));
         },
       ),
     );
