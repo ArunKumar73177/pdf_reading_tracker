@@ -30,7 +30,7 @@ class PdfViewerTheme {
 ///
 /// Supports two PDF sources — mutually exclusive:
 /// - **Asset PDF**: provide [assetPath].
-/// - **User-picked PDF**: provide [filePath] (absolute on-device path).
+/// - **User-picked PDF**: provide [filePath] (absolute persistent on-device path).
 ///
 /// ### Asset usage
 /// ```dart
@@ -46,9 +46,16 @@ class PdfViewerTheme {
 /// PdfReadingTrackerViewer(
 ///   pdfId: picked.pdfId,
 ///   pdfTitle: picked.title,
-///   filePath: picked.filePath,
+///   filePath: picked.filePath,   // always a persistent ApplicationDocuments path
 /// )
 /// ```
+///
+/// **v2.1.1 changes**
+/// - Uses `_ctrl.progressPct` (which now computes `(page+1)/total`) for the
+///   bottom bar so it matches the value stored in [ReadingProgress].
+/// - `onViewCreated` no longer calls `notifyListeners` unnecessarily.
+/// - `setState` in `_onUpdate` is guarded so overlay widgets (FAB, bottom bar)
+///   only rebuild when the relevant slice of state actually changes.
 class PdfReadingTrackerViewer extends StatefulWidget {
   const PdfReadingTrackerViewer({
     super.key,
@@ -75,8 +82,9 @@ class PdfReadingTrackerViewer extends StatefulWidget {
   /// Flutter asset path. Mutually exclusive with [filePath].
   final String? assetPath;
 
-  /// Absolute on-device path for user-picked PDFs. Mutually exclusive with
-  /// [assetPath].
+  /// Absolute **persistent** on-device path for user-picked PDFs.
+  /// Must point to a file inside ApplicationDocumentsDirectory — never a
+  /// temp/cache path.  Mutually exclusive with [assetPath].
   final String? filePath;
 
   final void Function(int page, int total)? onPageChanged;
@@ -95,6 +103,16 @@ class PdfReadingTrackerViewer extends StatefulWidget {
 class _PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
   late final PdfViewerController _ctrl;
 
+  // ---------------------------------------------------------------------------
+  // Cached state snapshot — used to skip redundant setState calls (Bug 4 fix).
+  // ---------------------------------------------------------------------------
+  int _lastPage = -1;
+  int _lastTotal = -1;
+  int _lastBookmarkCount = -1;
+  bool _lastSaving = false;
+  bool _lastLoading = true;
+  String? _lastError;
+
   @override
   void initState() {
     super.initState();
@@ -103,8 +121,6 @@ class _PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
       pdfTitle: widget.pdfTitle,
       assetPath: widget.assetPath,
       filePath: widget.filePath,
-      // For user-picked PDFs, store the filePath in the progress record so
-      // Recent PDFs can verify the file still exists.
       onDeviceFilePath: widget.filePath,
     );
     _ctrl.addListener(_onUpdate);
@@ -118,8 +134,39 @@ class _PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
     super.dispose();
   }
 
+  /// Only call setState when something the UI actually cares about changed.
+  ///
+  /// This is the primary fix for Bug 4: programmatic jumps emit many
+  /// `onPageChanged` callbacks from the renderer; without this guard every
+  /// callback would trigger a full Scaffold rebuild.
   void _onUpdate() {
-    if (mounted) setState(() {});
+    if (!mounted) return;
+
+    final pageChanged = _ctrl.currentPage != _lastPage;
+    final totalChanged = _ctrl.totalPages != _lastTotal;
+    final bookmarkCountChanged =
+        _ctrl.bookmarks.length != _lastBookmarkCount;
+    final savingChanged = _ctrl.isSavingProgress != _lastSaving;
+    final loadingChanged = _ctrl.isLoading != _lastLoading;
+    final errorChanged = _ctrl.error != _lastError;
+
+    if (!pageChanged &&
+        !totalChanged &&
+        !bookmarkCountChanged &&
+        !savingChanged &&
+        !loadingChanged &&
+        !errorChanged) {
+      return; // nothing visible changed — skip the rebuild
+    }
+
+    _lastPage = _ctrl.currentPage;
+    _lastTotal = _ctrl.totalPages;
+    _lastBookmarkCount = _ctrl.bookmarks.length;
+    _lastSaving = _ctrl.isSavingProgress;
+    _lastLoading = _ctrl.isLoading;
+    _lastError = _ctrl.error;
+
+    setState(() {});
   }
 
   // ---------------------------------------------------------------------------
@@ -190,13 +237,11 @@ class _PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
         foregroundColor: theme?.appBarForegroundColor ?? cs.onPrimaryContainer,
         actions: [
           if (!_ctrl.isLoading && _ctrl.error == null) ...[
-            // Jump to page
             IconButton(
               icon: const Icon(Icons.redo_rounded),
               tooltip: 'Jump to page',
               onPressed: _handleJumpToPage,
             ),
-            // Bookmarks list
             IconButton(
               icon: Badge(
                 isLabelVisible: _ctrl.bookmarks.isNotEmpty,
@@ -216,6 +261,8 @@ class _PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
           : ReaderBottomBar(
         currentPage: _ctrl.currentPage,
         totalPages: _ctrl.totalPages,
+        // Bug 2 & 3 fix: progressPct is now computed on the
+        // controller using (currentPage+1)/totalPages.
         progressPct: _ctrl.progressPct,
         isSaving: _ctrl.isSavingProgress,
       ),

@@ -3,6 +3,16 @@ import '../constants/database_constants.dart';
 /// Immutable value object representing a user's reading progress for a single
 /// PDF document.
 ///
+/// **v2.1.1 fix — progress percentage**
+/// `progressPct` is now computed as `(currentPage + 1) / totalPages * 100`.
+/// Previously it used `currentPage / totalPages`, causing:
+///   - Page 1  (index 0) → 0 %   (Bug 3)
+///   - Last page (index N-1) → (N-1)/N*100, never 100 % (Bug 2)
+///
+/// The corrected formula:
+///   - Page 1  (index 0) → 1/N * 100  (user has started reading)
+///   - Last page (index N-1) → N/N * 100 = 100 %
+///
 /// [filePath] is `null` for asset-backed PDFs bundled with the app and
 /// non-null for PDFs the user picked from their device via [PdfPickerService].
 class ReadingProgress {
@@ -30,10 +40,16 @@ class ReadingProgress {
   /// asset key for bundled PDFs).
   final String pdfId;
 
+  /// Zero-based index of the currently displayed page.
   final int currentPage;
+
   final int totalPages;
 
   /// Read-completion percentage in [0.0, 100.0].
+  ///
+  /// Computed as `((currentPage + 1) / totalPages * 100).clamp(0.0, 100.0)`
+  /// so that page-index 0 (first page) yields >0 % and the last page always
+  /// yields exactly 100 %.
   final double progressPct;
 
   final DateTime lastReadAt;
@@ -43,6 +59,9 @@ class ReadingProgress {
   final String? title;
 
   /// Absolute on-device file path for user-picked PDFs; `null` for assets.
+  ///
+  /// Always points to the **persistent** copy inside
+  /// `ApplicationDocumentsDirectory/user_pdfs/` — never a temp/cache path.
   ///
   /// Use this to verify the file still exists before opening:
   /// ```dart
@@ -64,9 +83,7 @@ class ReadingProgress {
     String? filePath,
   }) {
     final now = DateTime.now().toUtc();
-    final pct = totalPages > 0
-        ? ((currentPage / totalPages) * 100.0).clamp(0.0, 100.0)
-        : 0.0;
+    final pct = _computeProgressPct(currentPage, totalPages);
     return ReadingProgress(
       pdfId: pdfId,
       currentPage: currentPage,
@@ -77,6 +94,20 @@ class ReadingProgress {
       title: title,
       filePath: filePath,
     );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Progress percentage helper
+  // ---------------------------------------------------------------------------
+
+  /// Computes `progressPct` from zero-based [page] and [total].
+  ///
+  /// - total == 0  → 0.0  (PDF not yet rendered)
+  /// - page == 0   → 1/total * 100  (first page viewed, not zero)
+  /// - page == total-1 → 100.0  (last page)
+  static double _computeProgressPct(int page, int total) {
+    if (total <= 0) return 0.0;
+    return ((page + 1) / total * 100.0).clamp(0.0, 100.0);
   }
 
   // ---------------------------------------------------------------------------
@@ -96,12 +127,18 @@ class ReadingProgress {
     String? filePath,
     bool clearFilePath = false,
   }) {
+    final resolvedPage = currentPage ?? this.currentPage;
+    final resolvedTotal = totalPages ?? this.totalPages;
+    // Recompute progressPct from updated page/total unless caller provides it.
+    final resolvedPct =
+        progressPct ?? _computeProgressPct(resolvedPage, resolvedTotal);
+
     return ReadingProgress(
       id: id ?? this.id,
       pdfId: pdfId ?? this.pdfId,
-      currentPage: currentPage ?? this.currentPage,
-      totalPages: totalPages ?? this.totalPages,
-      progressPct: progressPct ?? this.progressPct,
+      currentPage: resolvedPage,
+      totalPages: resolvedTotal,
+      progressPct: resolvedPct,
       lastReadAt: lastReadAt ?? this.lastReadAt,
       createdAt: createdAt ?? this.createdAt,
       title: clearTitle ? null : (title ?? this.title),
@@ -174,8 +211,15 @@ class ReadingProgress {
 
   @override
   int get hashCode => Object.hash(
-    id, pdfId, currentPage, totalPages, progressPct,
-    lastReadAt, createdAt, title, filePath,
+    id,
+    pdfId,
+    currentPage,
+    totalPages,
+    progressPct,
+    lastReadAt,
+    createdAt,
+    title,
+    filePath,
   );
 
   @override

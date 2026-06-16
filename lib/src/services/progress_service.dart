@@ -17,10 +17,17 @@ class ProgressServiceException implements Exception {
 
 /// SQLite-backed service for reading progress records.
 ///
-/// **v2.1.0 addition**: [getOrCreate] collapses the previous two-call
-/// pattern (`_ensureProgressExists` + `getProgress`) into a single
-/// database round-trip, reducing cold-open latency noticeably on slower
-/// Android storage.
+/// **v2.1.1 changes**
+///
+/// Bug 6 fix — `getRecentlyRead`:
+///   The previous query filtered `total_pages > 0`, which excluded PDFs that
+///   were opened but whose renderer hadn't yet reported the page count (or
+///   whose first `onRender` fired after the user left the screen).  The filter
+///   is removed; the controller now writes an initial record in `init()` so
+///   any opened PDF always appears in Recent PDFs.
+///
+///   The `lastReadAt` ordering naturally puts newest entries first, so the
+///   list is still useful without the total_pages guard.
 class ProgressService {
   ProgressService._();
   static final instance = ProgressService._();
@@ -64,19 +71,7 @@ class ProgressService {
   /// Returns an existing [ReadingProgress] for [pdfId], or creates and returns
   /// a fresh zero-progress record if none exists.
   ///
-  /// This replaces the previous two-call idiom used by [PdfViewerController]:
-  /// ```dart
-  /// // Before (2 round-trips):
-  /// await _ensureProgressExists();
-  /// final saved = await ProgressService.instance.getProgress(pdfId);
-  ///
-  /// // After (1 round-trip):
-  /// final saved = await ProgressService.instance.getOrCreate(
-  ///   pdfId: pdfId,
-  ///   pdfTitle: pdfTitle,
-  ///   onDeviceFilePath: onDeviceFilePath,
-  /// );
-  /// ```
+  /// Single DB round-trip for warm opens (record already exists).
   Future<ReadingProgress> getOrCreate({
     required String pdfId,
     required String pdfTitle,
@@ -85,7 +80,6 @@ class ProgressService {
     try {
       final db = await _db;
 
-      // Single query — most opens are warm (record already exists).
       final rows = await db.query(
         DatabaseConstants.tableReadingProgress,
         where: '${DatabaseConstants.columnPdfId} = ?',
@@ -143,16 +137,25 @@ class ProgressService {
     }
   }
 
-  /// Returns up to [limit] most-recently-read records.
+  /// Returns up to [limit] most-recently-read records, ordered by
+  /// `last_read_at DESC`.
   ///
-  /// Records where `total_pages = 0` (never rendered) are excluded so the
-  /// Recent PDFs list only shows PDFs that were actually opened in the viewer.
+  /// **v2.1.1 change**: the previous `total_pages > 0` filter is removed.
+  /// PDFs are now written to the DB the moment they are opened (even before
+  /// the renderer reports the page count), so filtering by `total_pages`
+  /// would hide freshly-opened PDFs.  The `lastReadAt` ordering is sufficient
+  /// to surface the most relevant entries.
+  ///
+  /// Callers that want to exclude never-rendered PDFs can filter client-side:
+  /// ```dart
+  /// final all = await getRecentlyRead();
+  /// final rendered = all.where((p) => p.totalPages > 0).toList();
+  /// ```
   Future<List<ReadingProgress>> getRecentlyRead({int limit = 20}) async {
     try {
       final db = await _db;
       final rows = await db.query(
         DatabaseConstants.tableReadingProgress,
-        where: '${DatabaseConstants.columnTotalPages} > 0',
         orderBy: '${DatabaseConstants.columnLastReadAt} DESC',
         limit: limit,
       );

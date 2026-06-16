@@ -1,25 +1,34 @@
 import 'package:flutter/material.dart';
 
-/// Slim progress bar + page counter shown at the bottom of the reader.
+import 'animated_progress_bar.dart';
+
+/// Bottom bar shown while reading a PDF.
 ///
-/// Internal to the package — not exported.
+/// Displays:
+/// - Current page / total pages.
+/// - Animated gradient progress bar (Improvement 3).
+/// - A small saving indicator when [isSaving] is true.
+///
+/// The bar uses [AnimatedProgressBar] which cross-fades percentage labels
+/// and smoothly animates the fill width on every [progressPct] change.
 class ReaderBottomBar extends StatelessWidget {
   const ReaderBottomBar({
     super.key,
     required this.currentPage,
     required this.totalPages,
     required this.progressPct,
-    required this.isSaving,
+    this.isSaving = false,
   });
 
-  /// Zero-based current page (displayed as 1-based).
+  /// Zero-based index of the currently visible page.
   final int currentPage;
   final int totalPages;
 
   /// Completion percentage in [0.0, 100.0].
   final double progressPct;
 
-  /// Shows a micro spinner while a DB write is in flight.
+  /// When `true` a small [CircularProgressIndicator] is shown to indicate
+  /// that a SQLite write is in progress.
   final bool isSaving;
 
   @override
@@ -27,65 +36,52 @@ class ReaderBottomBar extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
 
-    return Container(
-      decoration: BoxDecoration(
-        color: cs.surface,
-        boxShadow: [
-          BoxShadow(
-            color: cs.shadow.withValues(alpha: 0.08),
-            blurRadius: 8,
-            offset: const Offset(0, -2),
-          ),
-        ],
-      ),
-      padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(4),
-            child: LinearProgressIndicator(
-              value: totalPages > 0 ? progressPct / 100 : 0,
-              backgroundColor: cs.surfaceContainerHighest,
-              valueColor: AlwaysStoppedAnimation<Color>(cs.primary),
-              minHeight: 5,
+    final pageLabel = totalPages > 0
+        ? 'Page ${currentPage + 1} of $totalPages'
+        : 'Loading…';
+
+    return SafeArea(
+      top: false,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+        decoration: BoxDecoration(
+          color: cs.surface,
+          border: Border(top: BorderSide(color: cs.outlineVariant, width: 0.5)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // ── Progress bar ─────────────────────────────────────────
+            AnimatedProgressBar(
+              progressPct: progressPct,
+              height: 7,
+              showLabel: true,
             ),
-          ),
-          const SizedBox(height: 8),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                totalPages > 0
-                    ? 'Page ${currentPage + 1} of $totalPages'
-                    : 'Loading…',
-                style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
-              ),
-              Row(
-                children: [
-                  if (isSaving) ...[
-                    SizedBox(
-                      width: 10,
-                      height: 10,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 1.5,
-                        color: cs.primary,
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                  ],
-                  Text(
-                    '${progressPct.toStringAsFixed(1)}%',
-                    style: tt.bodySmall?.copyWith(
-                      color: cs.primary,
-                      fontWeight: FontWeight.w600,
+
+            const SizedBox(height: 8),
+
+            // ── Page label + saving indicator ─────────────────────────
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  pageLabel,
+                  style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+                ),
+                if (isSaving)
+                  SizedBox(
+                    width: 12,
+                    height: 12,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 1.5,
+                      color: cs.primary.withAlpha(160),
                     ),
                   ),
-                ],
-              ),
-            ],
-          ),
-        ],
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }

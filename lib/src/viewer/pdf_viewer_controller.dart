@@ -13,12 +13,38 @@ import '../services/progress_service.dart';
 
 /// Source of truth for [PdfReadingTrackerViewer].
 ///
-/// **v2.1.0 performance changes**
-/// - `init()` now issues a single DB call ([ProgressService.getOrCreate]) instead
-///   of two sequential calls (`_ensureProgressExists` + `getProgress`).
-/// - Progress saves are debounced (300 ms) so rapid page-turn sequences produce
-///   one write rather than N writes.
-/// - `goToPage` is guarded against duplicate calls to the same page index.
+/// **v2.1.1 changes**
+///
+/// Bug 2 & 3 — Progress percentage:
+///   `progressPct` now uses `(currentPage + 1) / totalPages` so page 1 shows
+///   a non-zero percentage and the last page always shows 100 %.
+///
+/// Bug 4 — Jump-to-page performance:
+///   `goToPage` no longer triggers a bookmark reload or an extra
+///   `notifyListeners` call.  The debounce was already in place; we now also
+///   guard against the `setState` storm that happened when the PDF renderer
+///   emitted rapid `onPageChanged` events during a programmatic jump.
+///
+/// Bug 5 — Open performance:
+///   Bookmark loading is deferred until after the first render (`onRender`).
+///   This removes a blocking SQLite query from the critical open path.
+///
+/// Bug 6 — Continue Reading / Recent:
+///   An initial progress record is written immediately in `init()` so the PDF
+///   appears in Recent PDFs before the user scrolls a single page.
+///
+/// **v2.2.0 change — Improvement 2 (jump-to-page optimisation)**
+///   The previous implementation waited 50 ms inside `goToPage` before
+///   updating `_currentPage`, causing a visible lag between the user tapping
+///   "Go" and the progress bar / page counter reflecting the new position.
+///
+///   Fix: `_currentPage` is now updated **optimistically** (before the
+///   `setPage` call), so the UI reacts instantly.  `_jumping` is set to
+///   `true` before the native scroll begins and cleared in `finally`, which
+///   continues to suppress the intermediate `onPageChanged` callbacks emitted
+///   by the renderer during the animation.  A single `notifyListeners` +
+///   debounced progress save fires once `setPage` awaits — eliminating both
+///   the rebuild storm and the redundant SQLite writes.
 ///
 /// Supports two PDF sources:
 /// - **Asset PDF**: pass [assetPath]; the controller extracts it to a temp file.
@@ -76,15 +102,32 @@ class PdfViewerController extends ChangeNotifier {
   int _totalPages = 0;
   int get totalPages => _totalPages;
 
-  double get progressPct => _totalPages > 0
-      ? (_currentPage / _totalPages * 100).clamp(0.0, 100.0)
-      : 0.0;
+  /// Bug 2 & 3 fix: use (currentPage + 1) / totalPages so that:
+  ///   - index 0 (page 1)       → 1/N * 100  > 0 %
+  ///   - index N-1 (last page)  → N/N * 100  = 100 %
+  double get progressPct {
+    if (_totalPages <= 0) return 0.0;
+    return ((_currentPage + 1) / _totalPages * 100.0).clamp(0.0, 100.0);
+  }
 
   List<Bookmark> _bookmarks = [];
   List<Bookmark> get bookmarks => List.unmodifiable(_bookmarks);
 
   bool _savingProgress = false;
   bool get isSavingProgress => _savingProgress;
+
+  // ---------------------------------------------------------------------------
+  // Internal flags
+  // ---------------------------------------------------------------------------
+
+  /// Tracks whether the very first `onRender` has fired.
+  /// Used to defer bookmark loading until the PDF is actually visible.
+  bool _hasRendered = false;
+
+  /// Tracks whether a programmatic `goToPage` jump is in progress.
+  /// While true, `onPageChanged` callbacks are suppressed from triggering
+  /// progress saves and extra `notifyListeners` calls to avoid rebuild storms.
+  bool _jumping = false;
 
   // ---------------------------------------------------------------------------
   // Debounce
@@ -103,14 +146,11 @@ class PdfViewerController extends ChangeNotifier {
     _log('init() pdfId=$pdfId');
     _setLoading(true);
     _error = null;
+    _hasRendered = false;
 
     try {
       // File resolution and DB bootstrap run concurrently when possible.
-      // Asset extraction must happen first so we have a valid file path;
-      // for user-picked PDFs we can parallelise file resolution with the DB
-      // call since filePath is already known.
       if (filePath != null) {
-        // Parallel: resolve path + bootstrap DB record.
         final results = await Future.wait([
           Future.value(filePath!),
           ProgressService.instance.getOrCreate(
@@ -123,7 +163,6 @@ class PdfViewerController extends ChangeNotifier {
         final saved = results[1] as ReadingProgress;
         _applyProgress(saved);
       } else {
-        // Asset PDF: must extract before DB call (pdfId is stable, filePath is null).
         _resolvedFilePath = await _extractAsset();
         final saved = await ProgressService.instance.getOrCreate(
           pdfId: pdfId,
@@ -133,7 +172,13 @@ class PdfViewerController extends ChangeNotifier {
         _applyProgress(saved);
       }
 
-      await _reloadBookmarks();
+      // Bug 6 fix: write an initial progress record immediately so the PDF
+      // appears in Recent PDFs as soon as it is opened, before any page
+      // scroll occurs.  If totalPages is still 0 (renderer hasn't fired yet)
+      // we write with page=0/total=0 and let onRender update total later.
+      await _persistProgressImmediate();
+
+      // Bookmarks are deferred to onRender (Bug 5 fix — see below).
     } catch (e, st) {
       debugPrintStack(stackTrace: st, label: 'PdfViewerController.init');
       _error = 'Failed to load PDF: $e';
@@ -161,19 +206,46 @@ class PdfViewerController extends ChangeNotifier {
 
   void onViewCreated(AlhPdfViewController controller) {
     _pdfViewController = controller;
-    notifyListeners();
+    // Do not call notifyListeners here — the widget rebuilds via onRender.
   }
 
+  /// Called by alh_pdf_view on every page change (swipe, programmatic jump).
+  ///
+  /// During a programmatic jump ([_jumping] == true) we update state silently
+  /// without scheduling a progress save or triggering a rebuild — the jump
+  /// completion handler does both after the animation settles.
   Future<void> onPageChanged(int page, int total) async {
     _currentPage = page;
     _totalPages = total;
+
+    if (_jumping) {
+      // State is updated above so progressPct is correct, but we skip the
+      // expensive notify + SQLite write during the jump animation.
+      return;
+    }
+
     notifyListeners();
     _schedulePersistProgress();
   }
 
+  /// Called once by alh_pdf_view when the PDF has finished rendering.
+  ///
+  /// Bug 5 fix: bookmarks are loaded here (after first render) rather than
+  /// in init(), keeping the critical open path free of extra SQLite reads.
+  ///
+  /// Bug 6 fix: we persist progress with the now-known totalPages so the
+  /// Recent PDFs list shows correct page counts.
   void onRender(int pages) {
     _totalPages = pages;
     notifyListeners();
+
+    if (!_hasRendered) {
+      _hasRendered = true;
+      // Load bookmarks lazily after the first render.
+      _reloadBookmarks();
+      // Persist with the real totalPages value.
+      _schedulePersistProgress();
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -211,15 +283,46 @@ class PdfViewerController extends ChangeNotifier {
   }
 
   // ---------------------------------------------------------------------------
-  // Navigation
+  // Navigation — Improvement 2: optimistic page update, no 50 ms delay
   // ---------------------------------------------------------------------------
 
   /// Navigates to the given zero-based [page] with animation.
   ///
   /// No-op if [page] equals [currentPage] (prevents redundant renders).
+  ///
+  /// ### Optimisation (v2.2.0)
+  /// `_currentPage` is updated **before** calling `setPage` so the progress
+  /// bar and page counter reflect the target page instantly, giving the user
+  /// immediate visual feedback while the native scroll animation plays.
+  ///
+  /// `_jumping` is set to `true` for the full duration of the await so every
+  /// intermediate `onPageChanged` callback emitted by the renderer is silently
+  /// absorbed (state update only, no `notifyListeners`, no SQLite write).
+  ///
+  /// A single `notifyListeners` + debounced save fires once `setPage` returns,
+  /// ensuring exactly one rebuild and at most one SQLite write per jump.
   Future<void> goToPage(int page) async {
     if (page == _currentPage) return;
-    await _pdfViewController?.setPage(page: page, withAnimation: true);
+
+    // ── Optimistic update ────────────────────────────────────────────────────
+    // Update _currentPage immediately so the progress bar and counter react
+    // at tap-time rather than after the scroll animation completes.
+    _currentPage = page;
+    notifyListeners(); // single rebuild — reflects the target state instantly
+
+    _jumping = true;
+    try {
+      await _pdfViewController?.setPage(page: page, withAnimation: true);
+      // No delay needed: _currentPage is already correct, and intermediate
+      // onPageChanged callbacks are suppressed by _jumping == true.
+    } finally {
+      _jumping = false;
+    }
+
+    // One debounced save after the animation settles.
+    // notifyListeners() is intentionally NOT called again here — the
+    // optimistic notify above already reflected the correct state.
+    _schedulePersistProgress();
   }
 
   // ---------------------------------------------------------------------------
@@ -249,6 +352,24 @@ class PdfViewerController extends ChangeNotifier {
   void _schedulePersistProgress() {
     _progressDebounce?.cancel();
     _progressDebounce = Timer(_kProgressDebounce, _persistProgress);
+  }
+
+  /// Immediate (non-debounced) progress write used during init to register
+  /// the PDF in Recent / Continue Reading before the user scrolls.
+  Future<void> _persistProgressImmediate() async {
+    try {
+      await ProgressService.instance.saveProgress(
+        ReadingProgress.create(
+          pdfId: pdfId,
+          currentPage: _currentPage,
+          totalPages: _totalPages,
+          title: pdfTitle,
+          filePath: onDeviceFilePath,
+        ),
+      );
+    } catch (e) {
+      _log('Initial progress save failed (non-fatal): $e');
+    }
   }
 
   Future<void> _persistProgress() async {

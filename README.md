@@ -1,8 +1,8 @@
 # pdf_reading_tracker
 
-A complete Flutter PDF reader and PDF operations package.
+A complete Flutter PDF Reader and PDF Operations package.
 
-Render PDFs, track reading progress, manage bookmarks, merge PDFs, split PDFs, and persist everything locally using SQLite.
+Render PDFs, track reading progress, manage bookmarks, upload PDFs from the device, continue reading from where users left off, merge PDFs, split PDFs, and persist everything locally using SQLite.
 
 Built on top of:
 
@@ -19,22 +19,34 @@ Built on top of:
 * PDF rendering via ALH PDF View
 * Horizontal page navigation
 * Double-tap zoom support
+* Jump to page navigation
+* Resume from last opened page
 * Multi-PDF support
-* Continue reading from last page
+
+### User PDF Management
+
+* Pick PDFs from device storage
+* Persistent PDF library
+* Continue Reading dashboard
+* Recent PDFs section
+* Automatic PDF restoration after app restart
 
 ### Reading Progress
 
 * Automatic progress tracking
-* Resume from last opened page
-* Progress percentage calculation
-* Offline persistence using SQLite
+* Accurate progress percentage calculation
+* Resume from last page
+* SQLite-backed persistence
+* Works across uploaded, merged, and split PDFs
 
 ### Bookmarks
 
 * Add bookmarks
 * Remove bookmarks
-* Bookmark notes
-* Persistent bookmark storage
+* Bookmark persistence
+* Bookmark support for uploaded PDFs
+* Bookmark support for merged PDFs
+* Bookmark support for split PDFs
 
 ### PDF Operations
 
@@ -42,13 +54,15 @@ Built on top of:
 * Split PDFs into smaller files
 * Isolate-based PDF processing
 * Typed exception handling
+* Syncfusion PDF powered operations
 
 ### Architecture
 
-* Flutter package architecture
-* SQLite-backed storage
 * Offline-first design
-* Clean service-based implementation
+* SQLite-backed persistence
+* Service-based architecture
+* Flutter package friendly
+* Extensible for future PDF features
 
 ---
 
@@ -64,7 +78,7 @@ Built on top of:
 
 ```yaml
 dependencies:
-  pdf_reading_tracker: ^2.0.1
+  pdf_reading_tracker: ^2.1.0
 ```
 
 ---
