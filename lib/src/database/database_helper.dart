@@ -1,207 +1,90 @@
-import 'dart:async';
-
-import 'package:flutter/foundation.dart' show kIsWeb;
-import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
+import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart';
+import 'package:path/path.dart';
 
 import '../constants/database_constants.dart';
 
-/// Singleton that owns the full SQLite lifecycle for [pdf_reading_tracker].
+/// Opens and manages the SQLite database for the package.
 ///
-/// Never construct directly. Always access via [DatabaseHelper.instance].
+/// ### Schema version history
+/// | Version | Change                                              |
+/// |---------|-----------------------------------------------------|
+/// | 1       | Initial: reading_progress + bookmarks               |
+/// | 2       | Added file_path to reading_progress                 |
+/// | 3       | Added title to reading_progress                     |
+/// | 4       | Added highlights table + idx_highlights_pdf_page    |
 class DatabaseHelper {
   DatabaseHelper._internal();
   static final DatabaseHelper instance = DatabaseHelper._internal();
 
-  Database? _db;
-  Completer<Database>? _openCompleter;
+  static const String _kDbName      = 'pdf_reading_tracker.db';
+  static const int    _kDbVersion   = 4;
+
+  Database? _database;
 
   Future<Database> get database async {
-    if (_db != null && _db!.isOpen) return _db!;
-    if (_openCompleter != null) return _openCompleter!.future;
-
-    _openCompleter = Completer<Database>();
-    try {
-      final db = await _initDatabase();
-      _db = db;
-      _openCompleter!.complete(db);
-      return db;
-    } catch (e, st) {
-      _openCompleter!.completeError(e, st);
-      _openCompleter = null;
-      _db = null;
-      rethrow;
-    }
-  }
-
-  Future<void> close() async {
-    if (_openCompleter != null && !_openCompleter!.isCompleted) {
-      try { await _openCompleter!.future; } catch (_) {}
-    }
-    if (_db != null && _db!.isOpen) await _db!.close();
-    _db = null;
-    _openCompleter = null;
-  }
-
-  Future<void> deleteDatabase() async {
-    await close();
-    final path = await _resolveDatabasePath();
-    await databaseFactory.deleteDatabase(path);
+    _database ??= await _openDatabase();
+    return _database!;
   }
 
   // ---------------------------------------------------------------------------
-  // Initialisation
+  // Open / create
   // ---------------------------------------------------------------------------
 
-  Future<Database> _initDatabase() async {
-    final path = await _resolveDatabasePath();
+  Future<Database> _openDatabase() async {
+    final dbPath = await getDatabasesPath();
+    final path   = join(dbPath, _kDbName);
+
     return openDatabase(
       path,
-      version: DatabaseConstants.kDatabaseVersion,
+      version:  _kDbVersion,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
-      onDowngrade: onDatabaseDowngradeDelete,
-      onOpen: _onOpen,
+      onConfigure: _onConfigure,
     );
   }
 
-  Future<String> _resolveDatabasePath() async {
-    try {
-      final dir = await getApplicationDocumentsDirectory();
-      return p.join(dir.path, DatabaseConstants.kDatabaseName);
-    } catch (_) {
-      return p.join(await getDatabasesPath(), DatabaseConstants.kDatabaseName);
-    }
+  /// Enable foreign-key enforcement on every connection.
+  Future<void> _onConfigure(Database db) async {
+    await db.execute('PRAGMA foreign_keys = ON');
   }
 
-  // ---------------------------------------------------------------------------
-  // SQLite lifecycle callbacks
-  // ---------------------------------------------------------------------------
-
-  Future<void> _onOpen(Database db) async {
-    await db.execute('PRAGMA foreign_keys = ON;');
-    if (!kIsWeb) await db.rawQuery('PRAGMA journal_mode = WAL;');
-  }
-
-  /// Full v4 schema for fresh installs — never needs migrations.
+  /// Full schema creation from scratch.
   Future<void> _onCreate(Database db, int version) async {
-    await _createReadingProgressTable(db);
-    await _createBookmarksTable(db);
-    await _createIndexes(db);
+    await db.execute(DatabaseConstants.createReadingProgressTable);
+    await db.execute(DatabaseConstants.createBookmarksTable);
+    await db.execute(DatabaseConstants.createHighlightsTable);
+    await db.execute(DatabaseConstants.createHighlightsIndex);
+    debugPrint('[DatabaseHelper] Created schema v$version');
   }
 
+  /// Incremental migrations.
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
-    for (int target = oldVersion + 1; target <= newVersion; target++) {
-      switch (target) {
-        case 2:
-          await _migrateV1ToV2(db);
-        case 3:
-        // v3 was a no-op bump in the previous session — nothing to migrate.
-          break;
-        case 4:
-          await _migrateV3ToV4(db);
-        default:
-          break;
-      }
-    }
-  }
+    debugPrint(
+        '[DatabaseHelper] Upgrading schema v$oldVersion → v$newVersion');
 
-  // ---------------------------------------------------------------------------
-  // DDL — table creation (always latest schema)
-  // ---------------------------------------------------------------------------
-
-  Future<void> _createReadingProgressTable(Database db) async {
-    await db.execute('''
-      CREATE TABLE IF NOT EXISTS ${DatabaseConstants.tableReadingProgress} (
-        ${DatabaseConstants.columnId}           INTEGER  PRIMARY KEY AUTOINCREMENT,
-        ${DatabaseConstants.columnPdfId}        TEXT     NOT NULL,
-        ${DatabaseConstants.columnCurrentPage}  INTEGER  NOT NULL DEFAULT 0,
-        ${DatabaseConstants.columnTotalPages}   INTEGER  NOT NULL DEFAULT 0,
-        ${DatabaseConstants.columnProgressPct}  REAL     NOT NULL DEFAULT 0.0,
-        ${DatabaseConstants.columnLastReadAt}   TEXT     NOT NULL,
-        ${DatabaseConstants.columnCreatedAt}    TEXT     NOT NULL,
-        ${DatabaseConstants.columnTitle}        TEXT,
-        ${DatabaseConstants.columnFilePath}     TEXT,
-        UNIQUE(${DatabaseConstants.columnPdfId})
-      );
-    ''');
-  }
-
-  Future<void> _createBookmarksTable(Database db) async {
-    await db.execute('''
-      CREATE TABLE IF NOT EXISTS ${DatabaseConstants.tableBookmarks} (
-        ${DatabaseConstants.columnId}        INTEGER PRIMARY KEY AUTOINCREMENT,
-        ${DatabaseConstants.columnPdfId}     TEXT    NOT NULL,
-        ${DatabaseConstants.columnPage}      INTEGER NOT NULL,
-        ${DatabaseConstants.columnNote}      TEXT,
-        ${DatabaseConstants.columnCreatedAt} TEXT    NOT NULL,
-        UNIQUE(${DatabaseConstants.columnPdfId}, ${DatabaseConstants.columnPage}),
-        FOREIGN KEY (${DatabaseConstants.columnPdfId})
-          REFERENCES ${DatabaseConstants.tableReadingProgress}(${DatabaseConstants.columnPdfId})
-          ON DELETE CASCADE
-      );
-    ''');
-  }
-
-  Future<void> _createIndexes(Database db) async {
-    await db.execute('''
-      CREATE INDEX IF NOT EXISTS idx_rp_pdf_id
-        ON ${DatabaseConstants.tableReadingProgress}(${DatabaseConstants.columnPdfId});
-    ''');
-    await db.execute('''
-      CREATE INDEX IF NOT EXISTS idx_rp_last_read
-        ON ${DatabaseConstants.tableReadingProgress}(${DatabaseConstants.columnLastReadAt});
-    ''');
-    await db.execute('''
-      CREATE INDEX IF NOT EXISTS idx_bm_pdf_id
-        ON ${DatabaseConstants.tableBookmarks}(${DatabaseConstants.columnPdfId});
-    ''');
-    await db.execute('''
-      CREATE INDEX IF NOT EXISTS idx_bm_pdf_id_page
-        ON ${DatabaseConstants.tableBookmarks}
-          (${DatabaseConstants.columnPdfId}, ${DatabaseConstants.columnPage});
-    ''');
-  }
-
-  // ---------------------------------------------------------------------------
-  // Migrations
-  // ---------------------------------------------------------------------------
-
-  /// v1 → v2: add nullable [columnTitle] to [tableReadingProgress].
-  Future<void> _migrateV1ToV2(Database db) async {
-    final columns = await db.rawQuery(
-      'PRAGMA table_info(${DatabaseConstants.tableReadingProgress});',
-    );
-    final exists = columns.any((r) => r['name'] == DatabaseConstants.columnTitle);
-    if (!exists) {
+    if (oldVersion < 2) {
+      // v1 → v2: add file_path column.
       await db.execute(
         'ALTER TABLE ${DatabaseConstants.tableReadingProgress} '
-            'ADD COLUMN ${DatabaseConstants.columnTitle} TEXT;',
+            'ADD COLUMN ${DatabaseConstants.columnFilePath} TEXT',
       );
     }
-  }
 
-  /// v3 → v4: add nullable [columnFilePath] to [tableReadingProgress].
-  ///
-  /// Existing rows receive NULL which correctly means "asset-backed PDF".
-  /// The PRAGMA guard makes this idempotent if ever called twice.
-  Future<void> _migrateV3ToV4(Database db) async {
-    final columns = await db.rawQuery(
-      'PRAGMA table_info(${DatabaseConstants.tableReadingProgress});',
-    );
-    final exists =
-    columns.any((r) => r['name'] == DatabaseConstants.columnFilePath);
-    if (!exists) {
+    if (oldVersion < 3) {
+      // v2 → v3: add title column.
       await db.execute(
         'ALTER TABLE ${DatabaseConstants.tableReadingProgress} '
-            'ADD COLUMN ${DatabaseConstants.columnFilePath} TEXT;',
+            'ADD COLUMN ${DatabaseConstants.columnTitle} TEXT',
       );
     }
-    // Add the last_read index now that we query by it for recent PDFs.
-    await db.execute('''
-      CREATE INDEX IF NOT EXISTS idx_rp_last_read
-        ON ${DatabaseConstants.tableReadingProgress}(${DatabaseConstants.columnLastReadAt});
-    ''');
+
+    if (oldVersion < 4) {
+      // v3 → v4: add highlights table and index.
+      await db.execute(DatabaseConstants.createHighlightsTable);
+      await db.execute(DatabaseConstants.createHighlightsIndex);
+    }
+
+    debugPrint('[DatabaseHelper] Schema upgrade complete → v$newVersion');
   }
 }

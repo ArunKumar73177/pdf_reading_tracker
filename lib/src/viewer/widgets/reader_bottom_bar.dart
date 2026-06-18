@@ -5,12 +5,14 @@ import 'animated_progress_bar.dart';
 /// Bottom bar shown while reading a PDF.
 ///
 /// Displays:
-/// - Current page / total pages.
-/// - Animated gradient progress bar (Improvement 3).
+/// - Animated gradient progress bar.
+/// - Current page / total pages label.
 /// - A small saving indicator when [isSaving] is true.
 ///
-/// The bar uses [AnimatedProgressBar] which cross-fades percentage labels
-/// and smoothly animates the fill width on every [progressPct] change.
+/// ### Performance
+/// The bar is wrapped in a top-level [RepaintBoundary] so that the
+/// [AnimatedProgressBar] animation never triggers a repaint of the PDF
+/// viewport above it.
 class ReaderBottomBar extends StatelessWidget {
   const ReaderBottomBar({
     super.key,
@@ -40,47 +42,54 @@ class ReaderBottomBar extends StatelessWidget {
         ? 'Page ${currentPage + 1} of $totalPages'
         : 'Loading…';
 
-    return SafeArea(
-      top: false,
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
-        decoration: BoxDecoration(
-          color: cs.surface,
-          border: Border(top: BorderSide(color: cs.outlineVariant, width: 0.5)),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // ── Progress bar ─────────────────────────────────────────
-            AnimatedProgressBar(
-              progressPct: progressPct,
-              height: 7,
-              showLabel: true,
+    return RepaintBoundary(
+      child: SafeArea(
+        top: false,
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+          decoration: BoxDecoration(
+            color:  cs.surface,
+            border: Border(
+              top: BorderSide(color: cs.outlineVariant, width: 0.5),
             ),
+          ),
+          child: Column(
+            mainAxisSize:       MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // ── Progress bar ───────────────────────────────────────────
+              AnimatedProgressBar(
+                progressPct: progressPct,
+                height:      7,
+                showLabel:   true,
+              ),
 
-            const SizedBox(height: 8),
+              const SizedBox(height: 8),
 
-            // ── Page label + saving indicator ─────────────────────────
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  pageLabel,
-                  style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
-                ),
-                if (isSaving)
-                  SizedBox(
-                    width: 12,
-                    height: 12,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 1.5,
-                      color: cs.primary.withAlpha(160),
+              // ── Page label + saving indicator ──────────────────────────
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    pageLabel,
+                    style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+                  ),
+                  AnimatedOpacity(
+                    opacity:  isSaving ? 1.0 : 0.0,
+                    duration: const Duration(milliseconds: 200),
+                    child: SizedBox(
+                      width:  12,
+                      height: 12,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 1.5,
+                        color:       cs.primary.withAlpha(160),
+                      ),
                     ),
                   ),
-              ],
-            ),
-          ],
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );

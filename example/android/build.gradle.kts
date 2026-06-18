@@ -1,16 +1,9 @@
-// example/android/build.gradle
-//
-// ⚠️  alh_pdf_view requires JitPack to resolve its Android PDF dependency.
-//    Add the maven block below to the allprojects > repositories section.
-
 allprojects {
     repositories {
         google()
         mavenCentral()
-
-        maven {
-            url = uri("https://jitpack.io")
-        }
+        // JitPack removed — was only required for alh_pdf_view (barteksc).
+        // syncfusion_flutter_pdfviewer resolves from Maven Central.
     }
 }
 

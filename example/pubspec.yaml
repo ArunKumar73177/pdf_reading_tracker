@@ -17,10 +17,6 @@ dependencies:
   pdf_reading_tracker:
     path: ../
 
-  # alh_pdf_view is re-exported via pdf_reading_tracker but listed here
-  # so PdfOperationsScreen can use AlhPdfView directly for generated files.
-  alh_pdf_view: ^2.3.3
-
   # path is used in PdfOperationsScreen for basename / basenameWithoutExtension.
   path: ^1.9.0
 
