@@ -8,11 +8,12 @@ import 'pdf_search_controller.dart';
 import 'pdf_viewer_controller.dart';
 import 'widgets/bookmark_fab.dart';
 import 'widgets/bookmarks_sheet.dart';
+import 'widgets/highlight_action_bar.dart';
 import 'widgets/pdf_search_bar.dart';
 import 'widgets/reader_bottom_bar.dart';
 
 // ---------------------------------------------------------------------------
-// Theme data-class (public API — unchanged)
+// Theme
 // ---------------------------------------------------------------------------
 
 @immutable
@@ -42,17 +43,18 @@ class PdfReadingTrackerViewer extends StatefulWidget {
     this.theme,
     this.swipeHorizontal = true,
     this.enableDoubleTap = true,
-    this.showAppBar = true,
-    this.showBottomBar = true,
+    this.showAppBar      = true,
+    this.showBottomBar   = true,
     this.showBookmarkFab = true,
-    this.enableSearch = true,
+    this.enableSearch    = true,
+    this.enableHighlight = true,
   }) : assert(
   (assetPath != null) != (filePath != null),
   'Provide exactly one of assetPath or filePath.',
   );
 
-  final String pdfId;
-  final String pdfTitle;
+  final String  pdfId;
+  final String  pdfTitle;
   final String? assetPath;
   final String? filePath;
   final void Function(int page, int total)? onPageChanged;
@@ -62,9 +64,10 @@ class PdfReadingTrackerViewer extends StatefulWidget {
   final bool showAppBar;
   final bool showBottomBar;
   final bool showBookmarkFab;
-
-  /// Set to `false` to hide the search button in the app bar.
   final bool enableSearch;
+
+  /// When `true`, text selection triggers the highlight action bar.
+  final bool enableHighlight;
 
   @override
   State<PdfReadingTrackerViewer> createState() =>
@@ -74,16 +77,15 @@ class PdfReadingTrackerViewer extends StatefulWidget {
 class _PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
   late final PdfViewerController _ctrl;
 
-  // Only loading/error/path transitions drive a full setState.
-  // Page, bookmark, saving, and search updates are handled by scoped
-  // ListenableBuilder sub-trees so the Scaffold is never rebuilt on swipe.
+  /// Key for accessing [sf.SfPdfViewerState.getSelectedTextLines()].
+  final GlobalKey<sf.SfPdfViewerState> _sfViewerKey =
+  GlobalKey<sf.SfPdfViewerState>();
+
   bool    _isLoading        = true;
   String? _error;
   String? _resolvedFilePath;
   int     _initialPage      = 0;
-
-  // Search bar visibility — local UI state only, no rebuild cascade.
-  bool _searchVisible = false;
+  bool    _searchVisible    = false;
 
   @override
   void initState() {
@@ -106,22 +108,63 @@ class _PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
     super.dispose();
   }
 
-  // Fires only for loading / error / path state — never for page swipes.
   void _onUpdate() {
     if (!mounted) return;
-
     final loadingChanged = _ctrl.isLoading       != _isLoading;
     final errorChanged   = _ctrl.error           != _error;
     final pathChanged    = _ctrl.resolvedFilePath != _resolvedFilePath;
-
     if (!loadingChanged && !errorChanged && !pathChanged) return;
-
     setState(() {
       _isLoading        = _ctrl.isLoading;
       _error            = _ctrl.error;
       _resolvedFilePath = _ctrl.resolvedFilePath;
       _initialPage      = _ctrl.initialPage;
     });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Highlight action
+  // ---------------------------------------------------------------------------
+
+  /// Called when the user taps "Highlight" in the action bar.
+  ///
+  /// Flow (verified against Syncfusion 27.x docs):
+  /// 1. Fetch the current [sf.PdfTextLine] list via the viewer state key.
+  /// 2. Build a [sf.HighlightAnnotation] from those lines and add it to the
+  ///    viewer via the controller.
+  /// 3. Pass the same lines to the domain controller to persist to SQLite.
+  ///
+  /// The color is read from [sf.PdfViewerController.annotationSettings] after
+  /// the add so it reflects any user-configured default; it falls back to the
+  /// default yellow if settings are unavailable.
+  void _commitHighlight() {
+    final textLines =
+        _sfViewerKey.currentState?.getSelectedTextLines() ?? const [];
+
+    if (textLines.isEmpty) {
+      // Selection was cleared before tap — nothing to do.
+      _ctrl.captureTextSelection(null, null, null);
+      return;
+    }
+
+    // Build and add the annotation to Syncfusion.
+    final annotation = sf.HighlightAnnotation(
+      textBoundsCollection: textLines,
+    );
+
+    // Use the configured default highlight color (yellow family).
+    // sf.PdfAnnotationSettings exposes `textMarkup` which has `color`.
+    // We read it after construction; the annotation.color has already been
+    // set by the AnnotationSettings default.
+    _ctrl.sfController.addAnnotation(annotation);
+
+    // Persist to SQLite using the color that was actually applied.
+    // annotation.color is set by Syncfusion from annotationSettings when
+    // addAnnotation() is called; reading it immediately after is safe.
+    _ctrl.commitHighlightFromLines(
+      textLines:  textLines,
+      colorValue: annotation.color.value,
+    );
   }
 
   // ---------------------------------------------------------------------------
@@ -136,7 +179,7 @@ class _PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
     } on BookmarkServiceException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('Could not save bookmark: $e'),
+        content:         Text('Could not save bookmark: $e'),
         backgroundColor: Theme.of(context).colorScheme.error,
       ));
     }
@@ -182,9 +225,12 @@ class _PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
       return widget.showAppBar
           ? Scaffold(
         appBar: AppBar(
-          title: Text(widget.pdfTitle, overflow: TextOverflow.ellipsis),
-          backgroundColor: theme?.appBarBackgroundColor ?? cs.primaryContainer,
-          foregroundColor: theme?.appBarForegroundColor ?? cs.onPrimaryContainer,
+          title: Text(widget.pdfTitle,
+              overflow: TextOverflow.ellipsis),
+          backgroundColor:
+          theme?.appBarBackgroundColor ?? cs.primaryContainer,
+          foregroundColor:
+          theme?.appBarForegroundColor ?? cs.onPrimaryContainer,
         ),
         body: const Center(child: CircularProgressIndicator()),
       )
@@ -196,65 +242,74 @@ class _PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
       return widget.showAppBar
           ? Scaffold(
         appBar: AppBar(
-          title: Text(widget.pdfTitle, overflow: TextOverflow.ellipsis),
-          backgroundColor: theme?.appBarBackgroundColor ?? cs.primaryContainer,
-          foregroundColor: theme?.appBarForegroundColor ?? cs.onPrimaryContainer,
+          title: Text(widget.pdfTitle,
+              overflow: TextOverflow.ellipsis),
+          backgroundColor:
+          theme?.appBarBackgroundColor ?? cs.primaryContainer,
+          foregroundColor:
+          theme?.appBarForegroundColor ?? cs.onPrimaryContainer,
         ),
         body: errorBody,
       )
           : errorBody;
     }
 
-    // Normal reading state — Scaffold built ONCE. Page swipes, search state,
-    // bookmarks, and highlights all update through scoped ListenableBuilders.
+    // Core viewer — keyed on path so Syncfusion never reloads on swipe.
     final viewerCore = _PdfViewerCore(
       key:              ValueKey(_resolvedFilePath),
+      sfViewerKey:      _sfViewerKey,
       resolvedFilePath: _resolvedFilePath!,
       initialPage:      _initialPage,
       swipeHorizontal:  widget.swipeHorizontal,
       enableDoubleTap:  widget.enableDoubleTap,
+      enableHighlight:  widget.enableHighlight,
       sfController:     _ctrl.sfController,
-      onPageChanged: (newPageNumber) {
-        _ctrl.onPageChanged(newPageNumber);
+      onPageChanged: (n) {
+        _ctrl.onPageChanged(n);
         widget.onPageChanged?.call(_ctrl.currentPage, _ctrl.totalPages);
       },
-      onDocumentLoaded:     (pageCount) => _ctrl.onDocumentLoaded(pageCount),
-      onDocumentLoadFailed: (desc)      => _ctrl.onDocumentLoadFailed(desc),
+      onDocumentLoaded:     (n)    => _ctrl.onDocumentLoaded(n),
+      onDocumentLoadFailed: (desc) => _ctrl.onDocumentLoadFailed(desc),
+      onTextSelectionChanged: (text, region) {
+        // Capture text lines at selection time from the viewer state.
+        final lines = _sfViewerKey.currentState?.getSelectedTextLines();
+        _ctrl.captureTextSelection(text, region, lines);
+      },
     );
 
-    if (!widget.showAppBar) return viewerCore;
+    if (!widget.showAppBar) {
+      return _wrapWithHighlightBar(viewerCore);
+    }
 
     return Scaffold(
-      // ── AppBar — rebuilt only when bookmark list changes ──────────────────
       appBar: PreferredSize(
         preferredSize: Size.fromHeight(
           kToolbarHeight + (_searchVisible ? 56.0 : 0.0),
         ),
         child: ListenableBuilder(
           listenable: _ctrl.bookmarksNotifier,
-          builder: (context, _) => _AppBarWithSearch(
-            title:           widget.pdfTitle,
-            backgroundColor: theme?.appBarBackgroundColor ?? cs.primaryContainer,
-            foregroundColor: theme?.appBarForegroundColor ?? cs.onPrimaryContainer,
-            bookmarkCount:   _ctrl.bookmarks.length,
-            searchVisible:   _searchVisible,
-            enableSearch:    widget.enableSearch,
+          builder: (_, __) => _AppBarWithSearch(
+            title:            widget.pdfTitle,
+            backgroundColor:
+            theme?.appBarBackgroundColor ?? cs.primaryContainer,
+            foregroundColor:
+            theme?.appBarForegroundColor ?? cs.onPrimaryContainer,
+            bookmarkCount:    _ctrl.bookmarks.length,
+            searchVisible:    _searchVisible,
+            enableSearch:     widget.enableSearch,
             searchController: _ctrl.searchController,
-            onJumpToPage:    _handleJumpToPage,
-            onBookmarks:     _handleBookmarksIconTap,
-            onToggleSearch:  _toggleSearch,
+            onJumpToPage:     _handleJumpToPage,
+            onBookmarks:      _handleBookmarksIconTap,
+            onToggleSearch:   _toggleSearch,
           ),
         ),
       ),
-
-      body: viewerCore,
-
-      // ── Bottom bar — page + saving ────────────────────────────────────────
+      body: _wrapWithHighlightBar(viewerCore),
       bottomNavigationBar: widget.showBottomBar
           ? ListenableBuilder(
         listenable: Listenable.merge(
             [_ctrl.pageNotifier, _ctrl.savingNotifier]),
-        builder: (context, _) => ReaderBottomBar(
+        builder: (_, __) => ReaderBottomBar(
           currentPage: _ctrl.currentPage,
           totalPages:  _ctrl.totalPages,
           progressPct: _ctrl.progressPct,
@@ -262,13 +317,11 @@ class _PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
         ),
       )
           : null,
-
-      // ── FAB — page + bookmark list ────────────────────────────────────────
       floatingActionButton: widget.showBookmarkFab
           ? ListenableBuilder(
         listenable: Listenable.merge(
             [_ctrl.pageNotifier, _ctrl.bookmarksNotifier]),
-        builder: (context, _) => BookmarkFab(
+        builder: (_, __) => BookmarkFab(
           isBookmarked: _ctrl.bookmarks
               .any((b) => b.page == _ctrl.currentPage),
           onPressed: _handleBookmarkTap,
@@ -278,24 +331,57 @@ class _PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
     );
   }
 
+  /// Wraps [child] in a [Stack] that overlays [HighlightActionBar] when the
+  /// user has an active text selection.
+  Widget _wrapWithHighlightBar(Widget child) {
+    if (!widget.enableHighlight) return child;
+
+    return ListenableBuilder(
+      listenable: _ctrl.highlightNotifier,
+      builder: (_, __) {
+        final pending = _ctrl.pendingSelection;
+        return Stack(
+          children: [
+            child,
+            if (pending != null)
+              Positioned(
+                bottom: 80,
+                left:   0,
+                right:  0,
+                child: Center(
+                  child: HighlightActionBar(
+                    selectedText: pending.selectedText,
+                    onHighlight:  _commitHighlight,
+                    onDismiss: () =>
+                        _ctrl.captureTextSelection(null, null, null),
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+
   // ---------------------------------------------------------------------------
   // Dialogs
   // ---------------------------------------------------------------------------
 
-  Future<String?> _showAddNoteDialog(BuildContext context, int pageNumber) {
+  Future<String?> _showAddNoteDialog(
+      BuildContext context, int pageNumber) {
     final ctrl = TextEditingController();
     return showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text('Bookmark page $pageNumber'),
         content: TextField(
-          controller: ctrl,
+          controller:          ctrl,
           decoration: const InputDecoration(
             hintText: 'Add a note (optional)',
-            border: OutlineInputBorder(),
+            border:   OutlineInputBorder(),
           ),
-          maxLines: 2,
-          autofocus: true,
+          maxLines:           2,
+          autofocus:          true,
           textCapitalization: TextCapitalization.sentences,
           onSubmitted: (v) => Navigator.of(ctx).pop(v.trim()),
         ),
@@ -315,7 +401,7 @@ class _PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
 }
 
 // ---------------------------------------------------------------------------
-// AppBar with collapsible search bar
+// AppBar with collapsible search
 // ---------------------------------------------------------------------------
 
 class _AppBarWithSearch extends StatelessWidget {
@@ -332,16 +418,16 @@ class _AppBarWithSearch extends StatelessWidget {
     required this.onToggleSearch,
   });
 
-  final String title;
-  final Color  backgroundColor;
-  final Color  foregroundColor;
-  final int    bookmarkCount;
-  final bool   searchVisible;
-  final bool   enableSearch;
+  final String              title;
+  final Color               backgroundColor;
+  final Color               foregroundColor;
+  final int                 bookmarkCount;
+  final bool                searchVisible;
+  final bool                enableSearch;
   final PdfSearchController searchController;
-  final VoidCallback onJumpToPage;
-  final VoidCallback onBookmarks;
-  final VoidCallback onToggleSearch;
+  final VoidCallback        onJumpToPage;
+  final VoidCallback        onBookmarks;
+  final VoidCallback        onToggleSearch;
 
   @override
   Widget build(BuildContext context) {
@@ -349,7 +435,7 @@ class _AppBarWithSearch extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         AppBar(
-          title: Text(title, overflow: TextOverflow.ellipsis),
+          title:           Text(title, overflow: TextOverflow.ellipsis),
           backgroundColor: backgroundColor,
           foregroundColor: foregroundColor,
           actions: [
@@ -358,12 +444,12 @@ class _AppBarWithSearch extends StatelessWidget {
                 icon: Icon(searchVisible
                     ? Icons.search_off_rounded
                     : Icons.search_rounded),
-                tooltip: searchVisible ? 'Close search' : 'Search text',
+                tooltip:   searchVisible ? 'Close search' : 'Search text',
                 onPressed: onToggleSearch,
               ),
             IconButton(
-              icon: const Icon(Icons.redo_rounded),
-              tooltip: 'Jump to page',
+              icon:      const Icon(Icons.redo_rounded),
+              tooltip:   'Jump to page',
               onPressed: onJumpToPage,
             ),
             IconButton(
@@ -372,16 +458,15 @@ class _AppBarWithSearch extends StatelessWidget {
                 label: Text('$bookmarkCount'),
                 child: const Icon(Icons.bookmarks_outlined),
               ),
-              tooltip: 'View bookmarks',
+              tooltip:   'View bookmarks',
               onPressed: onBookmarks,
             ),
           ],
         ),
-        // Animated search bar — slides in/out without rebuilding the Scaffold.
         AnimatedSize(
           duration: const Duration(milliseconds: 220),
-          curve: Curves.easeOutCubic,
-          child: searchVisible
+          curve:    Curves.easeOutCubic,
+          child:    searchVisible
               ? PdfSearchBar(searchController: searchController)
               : const SizedBox.shrink(),
         ),
@@ -392,55 +477,59 @@ class _AppBarWithSearch extends StatelessWidget {
 
 // ---------------------------------------------------------------------------
 // Stable SfPdfViewer host
-//
-// Keyed on resolvedFilePath — never rebuilt by page-change notifications.
-// Syncfusion therefore never reloads the document during a swipe.
-//
-// Scroll-head and scroll-status overlays disabled (Fix 8 — preserved):
-// they repaint on every scroll frame and add paint/compositing cost.
 // ---------------------------------------------------------------------------
 
 class _PdfViewerCore extends StatelessWidget {
   const _PdfViewerCore({
     super.key,
+    required this.sfViewerKey,
     required this.resolvedFilePath,
     required this.initialPage,
     required this.swipeHorizontal,
     required this.enableDoubleTap,
+    required this.enableHighlight,
     required this.sfController,
     required this.onPageChanged,
     required this.onDocumentLoaded,
     required this.onDocumentLoadFailed,
+    required this.onTextSelectionChanged,
   });
 
+  final GlobalKey<sf.SfPdfViewerState> sfViewerKey;
   final String resolvedFilePath;
   final int    initialPage;
   final bool   swipeHorizontal;
   final bool   enableDoubleTap;
+  final bool   enableHighlight;
   final sf.PdfViewerController sfController;
-  final void Function(int newPageNumber)  onPageChanged;
-  final void Function(int pageCount)      onDocumentLoaded;
-  final void Function(String description) onDocumentLoadFailed;
+  final void Function(int)            onPageChanged;
+  final void Function(int)            onDocumentLoaded;
+  final void Function(String)         onDocumentLoadFailed;
+  final void Function(String?, Rect?) onTextSelectionChanged;
 
   @override
   Widget build(BuildContext context) {
     return sf.SfPdfViewer.file(
       File(resolvedFilePath),
+      key:               sfViewerKey,
       controller:        sfController,
-      initialPageNumber: initialPage + 1, // Syncfusion boundary: +1
+      initialPageNumber: initialPage + 1, // BOUNDARY: zero → one
       scrollDirection:   swipeHorizontal
           ? sf.PdfScrollDirection.horizontal
           : sf.PdfScrollDirection.vertical,
       enableDoubleTapZooming: enableDoubleTap,
-      // Disable per-frame scroll overlays — reduces compositor layer count.
       canShowScrollHead:   false,
       canShowScrollStatus: false,
-      onPageChanged: (sf.PdfPageChangedDetails details) =>
-          onPageChanged(details.newPageNumber),
-      onDocumentLoaded: (sf.PdfDocumentLoadedDetails details) =>
-          onDocumentLoaded(details.document.pages.count),
-      onDocumentLoadFailed: (sf.PdfDocumentLoadFailedDetails details) =>
-          onDocumentLoadFailed('${details.error}: ${details.description}'),
+      onPageChanged: (sf.PdfPageChangedDetails d) =>
+          onPageChanged(d.newPageNumber),
+      onDocumentLoaded: (sf.PdfDocumentLoadedDetails d) =>
+          onDocumentLoaded(d.document.pages.count),
+      onDocumentLoadFailed: (sf.PdfDocumentLoadFailedDetails d) =>
+          onDocumentLoadFailed('${d.error}: ${d.description}'),
+      onTextSelectionChanged: enableHighlight
+          ? (sf.PdfTextSelectionChangedDetails d) =>
+          onTextSelectionChanged(d.selectedText, d.globalSelectedRegion)
+          : null,
     );
   }
 }
@@ -455,14 +544,12 @@ Future<int?> _showJumpToPageDialog(
       required int totalPages,
     }) async {
   if (totalPages <= 0) return null;
-
   final ctrl    = TextEditingController(text: '${currentPage + 1}');
   final formKey = GlobalKey<FormState>();
-
   return showDialog<int>(
     context: context,
     builder: (ctx) => AlertDialog(
-      title: const Text('Jump to page'),
+      title:   const Text('Jump to page'),
       content: Form(
         key: formKey,
         child: TextFormField(

@@ -6,12 +6,8 @@ import '../models/highlight.dart';
 
 /// SQLite-backed persistence service for [Highlight] records.
 ///
-/// Mirrors [BookmarkService] in design:
-/// - Singleton via [instance].
-/// - CRUD operations surface [HighlightServiceException] for all DB errors.
-/// - [getHighlights] returns records ordered by page ascending.
-/// - In-memory patching is done in [PdfViewerController]; this service is
-///   responsible only for durable storage.
+/// All CRUD operations keep the in-memory list in [PdfViewerController] as the
+/// source of truth; this service handles only durable storage.
 class HighlightService {
   HighlightService._internal();
   static final HighlightService instance = HighlightService._internal();
@@ -33,17 +29,13 @@ class HighlightService {
       );
     } on DatabaseException catch (e, st) {
       throw HighlightServiceException(
-        'addHighlight failed for pdfId="${highlight.pdfId}", '
-            'page=${highlight.page}.',
-        cause: e,
-        stackTrace: st,
+        'addHighlight failed for pdfId="${highlight.pdfId}", page=${highlight.page}.',
+        cause: e, stackTrace: st,
       );
     }
   }
 
-  /// Updates the [note] on the highlight identified by [id].
-  ///
-  /// Pass `null` to clear an existing note.
+  /// Updates the [note] field. Pass `null` to clear an existing note.
   /// Returns `true` if a row was updated.
   Future<bool> updateNote(int id, String? note) async {
     try {
@@ -57,14 +49,12 @@ class HighlightService {
       return affected > 0;
     } on DatabaseException catch (e, st) {
       throw HighlightServiceException(
-        'updateNote failed for id=$id.',
-        cause:      e,
-        stackTrace: st,
+        'updateNote failed for id=$id.', cause: e, stackTrace: st,
       );
     }
   }
 
-  /// Updates the [colorValue] of the highlight identified by [id].
+  /// Updates the [colorValue] of a highlight.
   Future<bool> updateColor(int id, int colorValue) async {
     try {
       final db       = await _db;
@@ -77,9 +67,7 @@ class HighlightService {
       return affected > 0;
     } on DatabaseException catch (e, st) {
       throw HighlightServiceException(
-        'updateColor failed for id=$id.',
-        cause:      e,
-        stackTrace: st,
+        'updateColor failed for id=$id.', cause: e, stackTrace: st,
       );
     }
   }
@@ -96,43 +84,18 @@ class HighlightService {
         DatabaseConstants.tableHighlights,
         where:     '${DatabaseConstants.columnPdfId} = ?',
         whereArgs: [pdfId],
-        orderBy:   '${DatabaseConstants.columnPage} ASC',
+        orderBy:   '${DatabaseConstants.columnPage} ASC, '
+            '${DatabaseConstants.columnCreatedAt} ASC',
       );
       return rows.map(Highlight.fromMap).toList(growable: false);
-    } on HighlightServiceException {
-      rethrow;
     } on DatabaseException catch (e, st) {
       throw HighlightServiceException(
-        'getHighlights failed for pdfId="$pdfId".',
-        cause:      e,
-        stackTrace: st,
+        'getHighlights failed for pdfId="$pdfId".', cause: e, stackTrace: st,
       );
     } catch (e, st) {
       throw HighlightServiceException(
         'getHighlights — deserialisation failed for pdfId="$pdfId".',
-        cause:      e,
-        stackTrace: st,
-      );
-    }
-  }
-
-  /// Returns highlights on a specific [page] (zero-based) of [pdfId].
-  Future<List<Highlight>> getHighlightsOnPage(String pdfId, int page) async {
-    try {
-      final db   = await _db;
-      final rows = await db.query(
-        DatabaseConstants.tableHighlights,
-        where:     '${DatabaseConstants.columnPdfId} = ? '
-            'AND ${DatabaseConstants.columnPage} = ?',
-        whereArgs: [pdfId, page],
-        orderBy:   '${DatabaseConstants.columnCreatedAt} ASC',
-      );
-      return rows.map(Highlight.fromMap).toList(growable: false);
-    } on DatabaseException catch (e, st) {
-      throw HighlightServiceException(
-        'getHighlightsOnPage failed for pdfId="$pdfId", page=$page.',
-        cause:      e,
-        stackTrace: st,
+        cause: e, stackTrace: st,
       );
     }
   }
@@ -141,9 +104,7 @@ class HighlightService {
   // Delete
   // ---------------------------------------------------------------------------
 
-  /// Deletes the highlight identified by [id].
-  ///
-  /// Returns `true` if a row was deleted.
+  /// Deletes the highlight identified by [id]. Returns `true` if deleted.
   Future<bool> removeHighlight(int id) async {
     try {
       final db       = await _db;
@@ -155,9 +116,7 @@ class HighlightService {
       return affected > 0;
     } on DatabaseException catch (e, st) {
       throw HighlightServiceException(
-        'removeHighlight failed for id=$id.',
-        cause:      e,
-        stackTrace: st,
+        'removeHighlight failed for id=$id.', cause: e, stackTrace: st,
       );
     }
   }
@@ -175,8 +134,7 @@ class HighlightService {
     } on DatabaseException catch (e, st) {
       throw HighlightServiceException(
         'clearHighlightsOnPage failed for pdfId="$pdfId", page=$page.',
-        cause:      e,
-        stackTrace: st,
+        cause: e, stackTrace: st,
       );
     }
   }
@@ -185,34 +143,26 @@ class HighlightService {
   Future<void> clearHighlights(String pdfId) async {
     try {
       final db = await _db;
-      await db.transaction((txn) async {
-        await txn.delete(
-          DatabaseConstants.tableHighlights,
-          where:     '${DatabaseConstants.columnPdfId} = ?',
-          whereArgs: [pdfId],
-        );
-      });
+      await db.delete(
+        DatabaseConstants.tableHighlights,
+        where:     '${DatabaseConstants.columnPdfId} = ?',
+        whereArgs: [pdfId],
+      );
     } on DatabaseException catch (e, st) {
       throw HighlightServiceException(
-        'clearHighlights failed for pdfId="$pdfId".',
-        cause:      e,
-        stackTrace: st,
+        'clearHighlights failed for pdfId="$pdfId".', cause: e, stackTrace: st,
       );
     }
   }
 
-  /// Deletes **all** highlight records across every document.
+  /// Deletes all highlight records across every document.
   Future<void> clearAllHighlights() async {
     try {
       final db = await _db;
-      await db.transaction((txn) async {
-        await txn.delete(DatabaseConstants.tableHighlights);
-      });
+      await db.delete(DatabaseConstants.tableHighlights);
     } on DatabaseException catch (e, st) {
       throw HighlightServiceException(
-        'clearAllHighlights failed.',
-        cause:      e,
-        stackTrace: st,
+        'clearAllHighlights failed.', cause: e, stackTrace: st,
       );
     }
   }

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart' as sf;
@@ -16,41 +17,38 @@ import 'pdf_search_controller.dart';
 
 /// Source of truth for [PdfReadingTrackerViewer].
 ///
-/// ## Architecture (v2.3.0 → v2.4.0)
+/// ## Highlight persistence — how it works (v2.5.0)
 ///
-/// ### Page-number convention
-/// Every page number exposed through the public surface (`currentPage`,
-/// `initialPage`, `totalPages`, [Bookmark.page], [Highlight.page]) is
-/// **zero-based**, exactly as SQLite has always expected.
-/// Syncfusion's controller and callbacks are **one-based**. Conversions
-/// happen at exactly two narrow boundaries:
-///   - Inbound:  Syncfusion page → subtract 1 → stored in `_currentPage`.
-///   - Outbound: `goToPage(zeroPage)` → add 1 → passed to `jumpToPage`.
+/// ### Verified Syncfusion 27.x API surface (from pub.dev docs)
+/// [sf.HighlightAnnotation] exposes only the properties inherited from
+/// [sf.Annotation]: `color`, `opacity`, `pageNumber`, `author`, `subject`,
+/// `name`, `isLocked`. It does NOT expose `textMarkupRects`, `bounds`, or
+/// any rect accessor. [sf.PdfViewerController.getAnnotations()] returns
+/// `List<Annotation>` — same base class only.
 ///
-/// ### Scoped notifiers (Fix 2 — preserved)
-/// | Notifier            | Fires on                                         |
-/// |---------------------|--------------------------------------------------|
-/// | [pageNotifier]      | currentPage / totalPages / progressPct           |
-/// | [bookmarksNotifier] | bookmark list CRUD                               |
-/// | [savingNotifier]    | debounced-autosave-in-flight flag                |
-/// | [searchNotifier]    | search state (query, results, current match)     |
-/// | [highlightNotifier] | highlight CRUD                                   |
+/// ### Capture (new highlight)
+/// 1. User selects text → the viewer state calls [captureTextSelection] with
+///    the raw [sf.PdfTextLine] list obtained from
+///    `SfPdfViewerState.getSelectedTextLines()`.
+/// 2. Host widget calls [commitHighlightFromLines] — we build a [Highlight]
+///    from those lines and persist it.  The annotation was already added to
+///    Syncfusion by the caller immediately before invoking this method.
 ///
-/// ### Performance fixes (v2.4.0)
-/// 1. **Dropped-write fix** — `_persistProgress` is now called immediately on
-///    `dispose()` (cancelling any in-flight debounce) so the last page is
-///    always committed even when the user swipes away quickly.
-/// 2. **Debounce gate** — `_schedulePersistProgress` skips scheduling when
-///    the value has not changed since the last persisted snapshot, avoiding
-///    redundant SQLite round-trips on repeated `onPageChanged` fires for the
-///    same page (Syncfusion can fire the callback multiple times per swipe).
-/// 3. **Search integration** — [PdfSearchController] is wired into
-///    `sfController` so text search drives Syncfusion's native highlight
-///    mechanism with zero extra paint overhead.
-/// 4. **Highlight persistence** — SQLite-backed [HighlightService] stores
-///    user selections.  Highlights are loaded once after document render and
-///    kept in memory; CRUD operations patch the in-memory list (same pattern
-///    as bookmarks Fix 3).
+/// ### Restore (document open)
+/// [_loadAndRestoreHighlights] fetches all [Highlight] rows for this PDF,
+/// reconstructs each `sf.HighlightAnnotation` from the stored `rectList`,
+/// and adds it via `sfController.addAnnotation()`.
+///
+/// ### Remove
+/// Because no rect accessor exists on [sf.Annotation], we match the
+/// annotation to remove by page number and insertion order (index within the
+/// filtered list), which is sufficient since each restore/add is ordered.
+///
+/// ### Page number boundary
+/// - Stored [Highlight.page]: **zero-based**.
+/// - Syncfusion `pageNumber`: **one-based**.
+/// - Conversion: `storedPage = sfPageNumber - 1` (inbound).
+///               `sfPageNumber = storedPage + 1`  (outbound).
 class PdfViewerController extends ChangeNotifier {
   PdfViewerController({
     required this.pdfId,
@@ -75,8 +73,6 @@ class PdfViewerController extends ChangeNotifier {
 
   final sf.PdfViewerController sfController = sf.PdfViewerController();
 
-  /// Exposed so [PdfReadingTrackerViewer] can pass it to [_PdfViewerCore]
-  /// and to the search UI widgets.
   late final PdfSearchController searchController =
   PdfSearchController(sfController: sfController);
 
@@ -87,21 +83,16 @@ class PdfViewerController extends ChangeNotifier {
   final ChangeNotifier pageNotifier      = ChangeNotifier();
   final ChangeNotifier bookmarksNotifier = ChangeNotifier();
   final ChangeNotifier savingNotifier    = ChangeNotifier();
-
-  /// Notifies when search state changes (delegates to [PdfSearchController]'s
-  /// internal notifier — exposed here so host widgets can listen to a single
-  /// source without importing the search controller directly).
-  ChangeNotifier get searchNotifier => searchController.notifier;
-
-  /// Notifies when the highlight list changes (add / remove / clear).
   final ChangeNotifier highlightNotifier = ChangeNotifier();
+
+  ChangeNotifier get searchNotifier => searchController.notifier;
 
   // ---------------------------------------------------------------------------
   // Exposed state
   // ---------------------------------------------------------------------------
 
-  bool   _loading = true;
-  bool   get isLoading => _loading;
+  bool    _loading = true;
+  bool    get isLoading => _loading;
 
   String? _error;
   String? get error => _error;
@@ -133,16 +124,23 @@ class PdfViewerController extends ChangeNotifier {
   bool get isSavingProgress => _savingProgress;
 
   // ---------------------------------------------------------------------------
+  // Pending text selection
+  // ---------------------------------------------------------------------------
+
+  /// Non-null while the user has text selected and has not yet tapped
+  /// "Highlight".  Cleared by [commitHighlightFromLines] or when selection
+  /// is cancelled.
+  PendingTextSelection? _pendingSelection;
+  PendingTextSelection? get pendingSelection => _pendingSelection;
+
+  // ---------------------------------------------------------------------------
   // Internal flags
   // ---------------------------------------------------------------------------
 
   bool _hasRendered      = false;
   int? _pendingJumpTarget;
-
-  /// Last page/totalPages snapshot that was actually written to SQLite.
-  /// Used by the debounce gate (Fix 2) to skip redundant writes.
-  int _persistedPage       = -1;
-  int _persistedTotalPages = -1;
+  int  _persistedPage       = -1;
+  int  _persistedTotalPages = -1;
 
   // ---------------------------------------------------------------------------
   // Debounce
@@ -158,9 +156,10 @@ class PdfViewerController extends ChangeNotifier {
   Future<void> init() async {
     _log('init() pdfId=$pdfId');
     _setLoading(true);
-    _error        = null;
-    _hasRendered  = false;
+    _error             = null;
+    _hasRendered       = false;
     _pendingJumpTarget = null;
+    _pendingSelection  = null;
 
     try {
       if (filePath != null) {
@@ -173,8 +172,7 @@ class PdfViewerController extends ChangeNotifier {
           ),
         ]);
         _resolvedFilePath = results[0] as String;
-        final saved = results[1] as ReadingProgress;
-        _applyProgress(saved);
+        _applyProgress(results[1] as ReadingProgress);
       } else {
         final results = await Future.wait([
           _extractAsset(),
@@ -185,8 +183,7 @@ class PdfViewerController extends ChangeNotifier {
           ),
         ]);
         _resolvedFilePath = results[0] as String;
-        final saved = results[1] as ReadingProgress;
-        _applyProgress(saved);
+        _applyProgress(results[1] as ReadingProgress);
       }
     } catch (e, st) {
       debugPrintStack(stackTrace: st, label: 'PdfViewerController.init');
@@ -197,18 +194,16 @@ class PdfViewerController extends ChangeNotifier {
   }
 
   void _applyProgress(ReadingProgress saved) {
-    _initialPage  = saved.currentPage;
-    _currentPage  = saved.currentPage;
-    _totalPages   = saved.totalPages;
+    _initialPage = saved.currentPage;
+    _currentPage = saved.currentPage;
+    _totalPages  = saved.totalPages;
     _log('Restored page $_currentPage / $_totalPages');
   }
 
   @override
   void dispose() {
-    // Fix 1 — Dropped-write fix: flush any pending debounced write synchronously.
     if (_progressDebounce?.isActive == true) {
       _progressDebounce!.cancel();
-      // Fire-and-forget; dispose must be synchronous.
       _persistProgressImmediate();
     }
     _progressDebounce?.cancel();
@@ -222,13 +217,9 @@ class PdfViewerController extends ChangeNotifier {
   }
 
   // ---------------------------------------------------------------------------
-  // Syncfusion callbacks
+  // Syncfusion document callbacks
   // ---------------------------------------------------------------------------
 
-  /// Called by `SfPdfViewer.onPageChanged`.
-  ///
-  /// CONVERSION BOUNDARY: [newPageNumber] is one-based (Syncfusion).
-  /// Converted to zero-based here, at the single point of entry.
   void onPageChanged(int newPageNumber) {
     final zeroBasedPage = newPageNumber - 1;
     _currentPage = zeroBasedPage;
@@ -242,28 +233,248 @@ class PdfViewerController extends ChangeNotifier {
     _schedulePersistProgress();
   }
 
-  /// Called by `SfPdfViewer.onDocumentLoaded`.
   void onDocumentLoaded(int pageCount) {
     _totalPages = pageCount;
     pageNotifier.notifyListeners();
 
     if (!_hasRendered) {
       _hasRendered = true;
-      // Parallel load — neither blocks the other.
       _reloadBookmarks();
-      _reloadHighlights();
+      _loadAndRestoreHighlights();
       _schedulePersistProgress();
     }
   }
 
-  /// Called by `SfPdfViewer.onDocumentLoadFailed`.
   void onDocumentLoadFailed(String description) {
     _error = 'Failed to load PDF: $description';
     notifyListeners();
   }
 
   // ---------------------------------------------------------------------------
-  // Bookmark operations (Fix 3 — in-memory patch, no full re-read)
+  // Text selection capture
+  // ---------------------------------------------------------------------------
+
+  /// Called from the viewer state when the user selects text.
+  ///
+  /// [selectedText] is the plain text; [globalRegion] is the screen-space
+  /// bounding rect (used for positioning the action bar); [textLines] are
+  /// the raw [sf.PdfTextLine] objects from
+  /// `SfPdfViewerState.getSelectedTextLines()`.
+  ///
+  /// When [selectedText] is null/empty the pending selection is cleared.
+  void captureTextSelection(
+      String? selectedText,
+      Rect? globalRegion,
+      List<sf.PdfTextLine>? textLines,
+      ) {
+    if (selectedText == null || selectedText.trim().isEmpty) {
+      if (_pendingSelection != null) {
+        _pendingSelection = null;
+        highlightNotifier.notifyListeners();
+      }
+      return;
+    }
+    _pendingSelection = PendingTextSelection(
+      selectedText: selectedText,
+      globalRegion: globalRegion,
+      page:         _currentPage,
+      textLines:    textLines ?? const [],
+    );
+    highlightNotifier.notifyListeners();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Highlight: commit from captured text lines
+  // ---------------------------------------------------------------------------
+
+  /// Called by the viewer after it has added the [sf.HighlightAnnotation] to
+  /// Syncfusion.  [textLines] are the `PdfTextLine` objects used to create
+  /// that annotation; [colorValue] is the annotation's `color.value`.
+  ///
+  /// If [textLines] is empty (edge-case: selection cleared before commit),
+  /// the call is a no-op.
+  Future<void> commitHighlightFromLines({
+    required List<sf.PdfTextLine> textLines,
+    required int colorValue,
+  }) async {
+    final pending = _pendingSelection;
+    _pendingSelection = null;
+
+    if (textLines.isEmpty) {
+      _log('commitHighlightFromLines: empty textLines — skipping');
+      highlightNotifier.notifyListeners();
+      return;
+    }
+
+    // Build HighlightRect list from the PdfTextLine bounds.
+    // PdfTextLine.bounds is relative to the PDF page dimensions.
+    final rects = textLines
+        .map((line) => HighlightRect(
+      left:   line.bounds.left,
+      top:    line.bounds.top,
+      right:  line.bounds.right,
+      bottom: line.bounds.bottom,
+    ))
+        .toList(growable: false);
+
+    // Page is taken from the first text line (one-based → zero-based).
+    // Falls back to the page recorded at selection-capture time.
+    final zeroPage = textLines.isNotEmpty
+        ? textLines.first.pageNumber - 1   // BOUNDARY: one → zero
+        : (pending?.page ?? _currentPage);
+
+    final highlight = Highlight.create(
+      pdfId:        pdfId,
+      page:         zeroPage,
+      selectedText: pending?.selectedText ?? textLines.first.text,
+      rectList:     rects,
+      colorValue:   colorValue,
+    );
+
+    try {
+      final rowId  = await HighlightService.instance.addHighlight(highlight);
+      final stored = highlight.copyWith(id: rowId);
+      final updated = List<Highlight>.of(_highlights)..add(stored);
+      updated.sort((a, b) => a.page.compareTo(b.page));
+      _highlights = updated;
+      _log('Highlight saved rowId=$rowId page=$zeroPage rects=${rects.length}');
+    } catch (e) {
+      _log('Failed to persist highlight (non-fatal): $e');
+    }
+
+    highlightNotifier.notifyListeners();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Highlight: remove
+  // ---------------------------------------------------------------------------
+
+  /// Removes the highlight with the given [id] from SQLite and from the
+  /// Syncfusion viewer.
+  ///
+  /// Because [sf.Annotation] exposes only [sf.Annotation.pageNumber] (no
+  /// rect accessor), we match by page and remove the annotation at the same
+  /// index as the stored highlight appears within the per-page list. This
+  /// is reliable as long as highlights are added and removed in order (which
+  /// they are — restores happen sequentially on document open).
+  Future<void> removeHighlight(int id) async {
+    final idx = _highlights.indexWhere((h) => h.id == id);
+    if (idx == -1) {
+      _log('removeHighlight: id=$id not found in memory list');
+      return;
+    }
+
+    final stored = _highlights[idx];
+    _removeSfAnnotation(stored);
+
+    await HighlightService.instance.removeHighlight(id);
+
+    _highlights = _highlights.where((h) => h.id != id).toList(growable: false);
+    _log('Highlight removed id=$id');
+    highlightNotifier.notifyListeners();
+  }
+
+  /// Finds the Syncfusion [sf.HighlightAnnotation] that corresponds to
+  /// [highlight] and removes it via [sfController.removeAnnotation].
+  ///
+  /// Match strategy: filter `getAnnotations()` to [sf.HighlightAnnotation]
+  /// objects on the same (one-based) page, then pick the one at the same
+  /// relative index as [highlight] appears among highlights on that page.
+  void _removeSfAnnotation(Highlight highlight) {
+    final sfPage = highlight.page + 1; // BOUNDARY: zero → one
+
+    // All stored highlights on this page, in list order.
+    final pageHighlights = _highlights
+        .where((h) => h.page == highlight.page)
+        .toList(growable: false);
+    final relativeIdx = pageHighlights.indexWhere((h) => h.id == highlight.id);
+
+    // Live Syncfusion annotations on the same page.
+    final sfOnPage = sfController
+        .getAnnotations()
+        .whereType<sf.HighlightAnnotation>()
+        .where((a) => a.pageNumber == sfPage)
+        .toList(growable: false);
+
+    if (relativeIdx >= 0 && relativeIdx < sfOnPage.length) {
+      sfController.removeAnnotation(sfOnPage[relativeIdx]);
+      return;
+    }
+
+    // Fallback: remove first match on page (avoids leaving orphan annotations).
+    if (sfOnPage.isNotEmpty) {
+      sfController.removeAnnotation(sfOnPage.first);
+      _log('_removeSfAnnotation: used fallback (first on page) for '
+          'id=${highlight.id} page=${highlight.page}');
+      return;
+    }
+
+    _log('_removeSfAnnotation: no Syncfusion annotation found for '
+        'id=${highlight.id} page=${highlight.page} — viewer already clean');
+  }
+
+  // ---------------------------------------------------------------------------
+  // Highlight: load from SQLite and restore to Syncfusion viewer
+  // ---------------------------------------------------------------------------
+
+  Future<void> _loadAndRestoreHighlights() async {
+    try {
+      _highlights = await HighlightService.instance.getHighlights(pdfId);
+      _log('Highlights loaded: ${_highlights.length} for pdfId=$pdfId');
+    } catch (e) {
+      _log('Failed to load highlights (non-fatal): $e');
+      _highlights = [];
+    }
+
+    // Notify UI immediately so the highlight list renders before Syncfusion
+    // finishes adding annotations.
+    highlightNotifier.notifyListeners();
+
+    _restoreHighlightsToViewer();
+  }
+
+  /// Reconstructs [sf.HighlightAnnotation] objects from stored [_highlights]
+  /// and pushes them into the Syncfusion controller.
+  void _restoreHighlightsToViewer() {
+    for (final highlight in _highlights) {
+      try {
+        _addHighlightToSfController(highlight);
+      } catch (e) {
+        _log('Failed to restore highlight id=${highlight.id} '
+            'page=${highlight.page}: $e');
+      }
+    }
+    _log('Highlights restored to viewer: ${_highlights.length}');
+  }
+
+  /// Builds a [sf.HighlightAnnotation] from a persisted [Highlight] and
+  /// calls [sfController.addAnnotation].
+  ///
+  /// BOUNDARY (outbound): [Highlight.page] is zero-based → add 1 for
+  /// [sf.PdfTextLine] which expects a one-based page number.
+  void _addHighlightToSfController(Highlight highlight) {
+    final sfPageNumber = highlight.page + 1; // zero → one
+
+    final textLines = highlight.rectList.map((r) {
+      return sf.PdfTextLine(
+        Rect.fromLTRB(r.left, r.top, r.right, r.bottom),
+        highlight.selectedText,
+        sfPageNumber,
+      );
+    }).toList(growable: false);
+
+    if (textLines.isEmpty) return;
+
+    final annotation = sf.HighlightAnnotation(
+      textBoundsCollection: textLines,
+    );
+    annotation.color = Color(highlight.colorValue);
+
+    sfController.addAnnotation(annotation);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Bookmark operations
   // ---------------------------------------------------------------------------
 
   Future<void> addBookmark({String? note}) async {
@@ -274,7 +485,6 @@ class PdfViewerController extends ChangeNotifier {
     final bm    = Bookmark.create(pdfId: pdfId, page: _currentPage, note: note);
     final rowId = await BookmarkService.instance.addBookmark(bm);
     _log('Bookmark added rowId=$rowId page=$_currentPage');
-
     final stored  = bm.copyWith(id: rowId);
     final updated = List<Bookmark>.of(_bookmarks)..add(stored);
     updated.sort((a, b) => a.page.compareTo(b.page));
@@ -291,7 +501,6 @@ class PdfViewerController extends ChangeNotifier {
 
   Future<void> updateBookmarkNote(int id, String? note) async {
     await BookmarkService.instance.updateNote(id, note);
-    _log('Bookmark note updated id=$id');
     final idx = _bookmarks.indexWhere((b) => b.id == id);
     if (idx != -1) {
       final updated = List<Bookmark>.of(_bookmarks);
@@ -302,56 +511,16 @@ class PdfViewerController extends ChangeNotifier {
   }
 
   // ---------------------------------------------------------------------------
-  // Highlight operations
-  // ---------------------------------------------------------------------------
-
-  /// Persists [highlight] and patches the in-memory list.
-  Future<void> addHighlight(Highlight highlight) async {
-    final rowId   = await HighlightService.instance.addHighlight(highlight);
-    final stored  = highlight.copyWith(id: rowId);
-    final updated = List<Highlight>.of(_highlights)..add(stored);
-    updated.sort((a, b) => a.page.compareTo(b.page));
-    _highlights = updated;
-    _log('Highlight added rowId=$rowId page=${highlight.page}');
-    highlightNotifier.notifyListeners();
-  }
-
-  Future<void> removeHighlight(int id) async {
-    await HighlightService.instance.removeHighlight(id);
-    _highlights = _highlights.where((h) => h.id != id).toList(growable: false);
-    _log('Highlight removed id=$id');
-    highlightNotifier.notifyListeners();
-  }
-
-  Future<void> clearHighlightsOnPage(int page) async {
-    await HighlightService.instance.clearHighlightsOnPage(pdfId, page);
-    _highlights = _highlights.where((h) => h.page != page).toList(growable: false);
-    highlightNotifier.notifyListeners();
-  }
-
-  /// Returns all highlights on [page] (zero-based).
-  List<Highlight> highlightsOnPage(int page) =>
-      _highlights.where((h) => h.page == page).toList(growable: false);
-
-  // ---------------------------------------------------------------------------
   // Navigation
   // ---------------------------------------------------------------------------
 
-  /// Navigates to the given **zero-based** [page].
-  ///
-  /// No-op if [page] equals [currentPage] or the document is not yet loaded.
-  ///
-  /// CONVERSION BOUNDARY: [page] is zero-based on entry;
-  /// converted to one-based before calling `jumpToPage`.
   Future<void> goToPage(int page) async {
     if (!_hasRendered) return;
     if (page == _currentPage) return;
-
     _currentPage = page;
     pageNotifier.notifyListeners();
-
     _pendingJumpTarget = page;
-    sfController.jumpToPage(page + 1); // Syncfusion boundary: +1
+    sfController.jumpToPage(page + 1); // BOUNDARY: zero → one
   }
 
   // ---------------------------------------------------------------------------
@@ -363,25 +532,19 @@ class PdfViewerController extends ChangeNotifier {
     final safe = pdfId.replaceAll(RegExp(r'[^a-zA-Z0-9_\-]'), '_');
     final file = File('${dir.path}/$safe.pdf');
     if (!file.existsSync()) {
-      _log('Extracting $assetPath → ${file.path}');
+      _log('Extracting $assetPath -> ${file.path}');
       final data = await rootBundle.load(assetPath!);
       await file.writeAsBytes(
-        data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
-      );
+          data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes));
     } else {
       _log('Asset already cached: ${file.path}');
     }
     return file.path;
   }
 
-  /// Fix 2 — Debounce gate: skips rescheduling when page+totalPages have not
-  /// changed since the last successful SQLite write.  Syncfusion can fire
-  /// `onPageChanged` multiple times for the same logical page during a fling;
-  /// this gate collapses those into a single write.
   void _schedulePersistProgress() {
-    if (_currentPage == _persistedPage && _totalPages == _persistedTotalPages) {
-      return;
-    }
+    if (_currentPage == _persistedPage &&
+        _totalPages  == _persistedTotalPages) return;
     _progressDebounce?.cancel();
     _progressDebounce = Timer(_kProgressDebounce, _persistProgress);
   }
@@ -410,21 +573,16 @@ class PdfViewerController extends ChangeNotifier {
     }
   }
 
-  /// Fire-and-forget variant used from [dispose] so the last page is never
-  /// dropped when the user leaves quickly.  Does not touch [_savingProgress]
-  /// (the widget tree is already tearing down).
   void _persistProgressImmediate() {
     ProgressService.instance
-        .saveProgress(
-      ReadingProgress.create(
-        pdfId:       pdfId,
-        currentPage: _currentPage,
-        totalPages:  _totalPages,
-        title:       pdfTitle,
-        filePath:    onDeviceFilePath,
-      ),
-    )
-        .catchError((e) => _log('Dispose-time save failed (non-fatal): $e'));
+        .saveProgress(ReadingProgress.create(
+      pdfId:       pdfId,
+      currentPage: _currentPage,
+      totalPages:  _totalPages,
+      title:       pdfTitle,
+      filePath:    onDeviceFilePath,
+    ))
+        .catchError((e) => _log('Dispose-time save failed: $e'));
   }
 
   Future<void> _reloadBookmarks() async {
@@ -433,16 +591,46 @@ class PdfViewerController extends ChangeNotifier {
     bookmarksNotifier.notifyListeners();
   }
 
-  Future<void> _reloadHighlights() async {
-    _highlights = await HighlightService.instance.getHighlights(pdfId);
-    _log('Highlights: ${_highlights.length} for pdfId=$pdfId');
-    highlightNotifier.notifyListeners();
-  }
-
   void _setLoading(bool v) {
     _loading = v;
     notifyListeners();
   }
 
   void _log(String msg) => debugPrint('[PdfViewerCtrl:$pdfId] $msg');
+}
+
+// ---------------------------------------------------------------------------
+// PendingTextSelection
+// ---------------------------------------------------------------------------
+
+/// Transient capture of a user text selection, held between
+/// `onTextSelectionChanged` and the user tapping "Highlight".
+///
+/// [textLines] carries the raw [sf.PdfTextLine] objects obtained from
+/// `SfPdfViewerState.getSelectedTextLines()`.  These are the ground-truth
+/// rect data used both to create the [sf.HighlightAnnotation] and to
+/// populate [Highlight.rectList] for SQLite persistence.
+class PendingTextSelection {
+  const PendingTextSelection({
+    required this.selectedText,
+    required this.globalRegion,
+    required this.page,
+    required this.textLines,
+  });
+
+  final String selectedText;
+
+  /// Global screen-space bounding rect — used only for positioning the
+  /// action bar tooltip; may be null on some Syncfusion versions.
+  final Rect? globalRegion;
+
+  /// Zero-based page where the selection was made.
+  final int page;
+
+  /// Raw Syncfusion text lines captured from
+  /// `SfPdfViewerState.getSelectedTextLines()` at selection time.
+  ///
+  /// These are passed directly to [PdfViewerController.commitHighlightFromLines]
+  /// and into [sf.HighlightAnnotation]'s `textBoundsCollection` constructor.
+  final List<sf.PdfTextLine> textLines;
 }

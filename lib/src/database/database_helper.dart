@@ -1,24 +1,25 @@
 import 'package:flutter/foundation.dart';
-import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
+import 'package:sqflite/sqflite.dart';
 
 import '../constants/database_constants.dart';
 
-/// Opens and manages the SQLite database for the package.
+/// Opens and manages the application SQLite database.
 ///
 /// ### Schema version history
-/// | Version | Change                                              |
-/// |---------|-----------------------------------------------------|
-/// | 1       | Initial: reading_progress + bookmarks               |
-/// | 2       | Added file_path to reading_progress                 |
-/// | 3       | Added title to reading_progress                     |
-/// | 4       | Added highlights table + idx_highlights_pdf_page    |
+/// | Version | Change                                                     |
+/// |---------|------------------------------------------------------------|
+/// | 1       | reading_progress + bookmarks                               |
+/// | 2       | reading_progress: added file_path                          |
+/// | 3       | reading_progress: added title                              |
+/// | 4       | highlights table (old schema with single `bounds` column)  |
+/// | 5       | highlights: replaced `bounds` with `rect_list` (multi-rect)|
 class DatabaseHelper {
   DatabaseHelper._internal();
   static final DatabaseHelper instance = DatabaseHelper._internal();
 
-  static const String _kDbName      = 'pdf_reading_tracker.db';
-  static const int    _kDbVersion   = 4;
+  static const String _kDbName    = 'pdf_reading_tracker.db';
+  static const int    _kDbVersion = 5;
 
   Database? _database;
 
@@ -27,29 +28,22 @@ class DatabaseHelper {
     return _database!;
   }
 
-  // ---------------------------------------------------------------------------
-  // Open / create
-  // ---------------------------------------------------------------------------
-
   Future<Database> _openDatabase() async {
     final dbPath = await getDatabasesPath();
     final path   = join(dbPath, _kDbName);
-
     return openDatabase(
       path,
-      version:  _kDbVersion,
-      onCreate: _onCreate,
+      version:   _kDbVersion,
+      onCreate:  _onCreate,
       onUpgrade: _onUpgrade,
       onConfigure: _onConfigure,
     );
   }
 
-  /// Enable foreign-key enforcement on every connection.
   Future<void> _onConfigure(Database db) async {
     await db.execute('PRAGMA foreign_keys = ON');
   }
 
-  /// Full schema creation from scratch.
   Future<void> _onCreate(Database db, int version) async {
     await db.execute(DatabaseConstants.createReadingProgressTable);
     await db.execute(DatabaseConstants.createBookmarksTable);
@@ -58,13 +52,10 @@ class DatabaseHelper {
     debugPrint('[DatabaseHelper] Created schema v$version');
   }
 
-  /// Incremental migrations.
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
-    debugPrint(
-        '[DatabaseHelper] Upgrading schema v$oldVersion → v$newVersion');
+    debugPrint('[DatabaseHelper] Upgrading v$oldVersion → v$newVersion');
 
     if (oldVersion < 2) {
-      // v1 → v2: add file_path column.
       await db.execute(
         'ALTER TABLE ${DatabaseConstants.tableReadingProgress} '
             'ADD COLUMN ${DatabaseConstants.columnFilePath} TEXT',
@@ -72,7 +63,6 @@ class DatabaseHelper {
     }
 
     if (oldVersion < 3) {
-      // v2 → v3: add title column.
       await db.execute(
         'ALTER TABLE ${DatabaseConstants.tableReadingProgress} '
             'ADD COLUMN ${DatabaseConstants.columnTitle} TEXT',
@@ -80,11 +70,35 @@ class DatabaseHelper {
     }
 
     if (oldVersion < 4) {
-      // v3 → v4: add highlights table and index.
+      // v3 → v4: create old highlights table with single `bounds` column.
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS ${DatabaseConstants.tableHighlights} (
+          ${DatabaseConstants.columnId}           INTEGER PRIMARY KEY AUTOINCREMENT,
+          ${DatabaseConstants.columnPdfId}        TEXT    NOT NULL,
+          ${DatabaseConstants.columnPage}         INTEGER NOT NULL,
+          ${DatabaseConstants.columnSelectedText} TEXT    NOT NULL,
+          bounds                                  TEXT    NOT NULL,
+          ${DatabaseConstants.columnColorValue}   INTEGER NOT NULL,
+          ${DatabaseConstants.columnCreatedAt}    TEXT    NOT NULL,
+          ${DatabaseConstants.columnNote}         TEXT,
+          FOREIGN KEY (${DatabaseConstants.columnPdfId})
+            REFERENCES ${DatabaseConstants.tableReadingProgress} (${DatabaseConstants.columnPdfId})
+            ON DELETE CASCADE
+        )
+      ''');
+      await db.execute(DatabaseConstants.createHighlightsIndex);
+    }
+
+    if (oldVersion < 5) {
+      // v4 → v5: migrate highlights from single `bounds` to `rect_list`.
+      // Strategy: drop and recreate. Old highlights are lost — this is
+      // acceptable because the old schema stored screen-space rects that
+      // cannot be reliably converted to PDF page-space without the document.
+      await db.execute('DROP TABLE IF EXISTS ${DatabaseConstants.tableHighlights}');
       await db.execute(DatabaseConstants.createHighlightsTable);
       await db.execute(DatabaseConstants.createHighlightsIndex);
     }
 
-    debugPrint('[DatabaseHelper] Schema upgrade complete → v$newVersion');
+    debugPrint('[DatabaseHelper] Upgrade complete → v$newVersion');
   }
 }

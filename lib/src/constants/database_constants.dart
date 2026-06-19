@@ -1,7 +1,4 @@
 /// Central registry for all SQLite table names and column identifiers.
-///
-/// Changing a value here is the single place needed to rename a table or
-/// column across the entire package.
 abstract final class DatabaseConstants {
   DatabaseConstants._();
 
@@ -11,12 +8,10 @@ abstract final class DatabaseConstants {
 
   static const String tableReadingProgress = 'reading_progress';
   static const String tableBookmarks        = 'bookmarks';
-
-  /// Added in v2.4.0 — persistent text highlights.
-  static const String tableHighlights = 'highlights';
+  static const String tableHighlights       = 'highlights';
 
   // ---------------------------------------------------------------------------
-  // Shared column names (used in multiple tables)
+  // Shared columns
   // ---------------------------------------------------------------------------
 
   static const String columnId        = 'id';
@@ -37,18 +32,20 @@ abstract final class DatabaseConstants {
   static const String columnFilePath    = 'file_path';
 
   // ---------------------------------------------------------------------------
-  // highlights columns (v2.4.0)
+  // highlights columns
   // ---------------------------------------------------------------------------
 
   static const String columnSelectedText = 'selected_text';
-  static const String columnBounds       = 'bounds';
-  static const String columnColorValue   = 'color_value';
+
+  /// Pipe-separated list of "left,top,right,bottom" rect strings.
+  /// Replaces the old single-rect `bounds` column.
+  static const String columnRectList   = 'rect_list';
+  static const String columnColorValue = 'color_value';
 
   // ---------------------------------------------------------------------------
-  // DDL helpers
+  // DDL
   // ---------------------------------------------------------------------------
 
-  /// CREATE TABLE statement for [tableReadingProgress].
   static const String createReadingProgressTable = '''
     CREATE TABLE IF NOT EXISTS $tableReadingProgress (
       $columnId          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -63,10 +60,6 @@ abstract final class DatabaseConstants {
     )
   ''';
 
-  /// CREATE TABLE statement for [tableBookmarks].
-  ///
-  /// Uses a unique constraint on (pdf_id, page) to prevent duplicate
-  /// bookmarks on the same page.
   static const String createBookmarksTable = '''
     CREATE TABLE IF NOT EXISTS $tableBookmarks (
       $columnId        INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -81,17 +74,14 @@ abstract final class DatabaseConstants {
     )
   ''';
 
-  /// CREATE TABLE statement for [tableHighlights] (v2.4.0).
-  ///
-  /// No UNIQUE constraint on (pdf_id, page) — multiple highlights per page
-  /// are allowed.
+  /// highlights table — supports multiple rects per row via [columnRectList].
   static const String createHighlightsTable = '''
     CREATE TABLE IF NOT EXISTS $tableHighlights (
       $columnId           INTEGER PRIMARY KEY AUTOINCREMENT,
       $columnPdfId        TEXT    NOT NULL,
       $columnPage         INTEGER NOT NULL,
       $columnSelectedText TEXT    NOT NULL,
-      $columnBounds       TEXT    NOT NULL,
+      $columnRectList     TEXT    NOT NULL,
       $columnColorValue   INTEGER NOT NULL,
       $columnCreatedAt    TEXT    NOT NULL,
       $columnNote         TEXT,
@@ -101,7 +91,6 @@ abstract final class DatabaseConstants {
     )
   ''';
 
-  /// Index on highlights(pdf_id, page) for fast per-page lookups.
   static const String createHighlightsIndex = '''
     CREATE INDEX IF NOT EXISTS idx_highlights_pdf_page
     ON $tableHighlights ($columnPdfId, $columnPage)
