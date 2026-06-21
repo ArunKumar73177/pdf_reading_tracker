@@ -1,11 +1,13 @@
 // ── Models ────────────────────────────────────────────────────────────────────
 export 'src/models/bookmark.dart'  show Bookmark;
-export 'src/models/highlight.dart' show Highlight, HighlightBounds;
+export 'src/models/highlight.dart' show Highlight, HighlightRect, AnnotationType, AnnotationColors;
+export 'src/models/note.dart'      show Note;
 export 'src/models/reading_progress.dart' show ReadingProgress;
 
 // ── Service exceptions ────────────────────────────────────────────────────────
 export 'src/services/bookmark_service.dart'  show BookmarkServiceException;
 export 'src/services/highlight_service.dart' show HighlightServiceException;
+export 'src/services/note_service.dart'      show NoteServiceException;
 export 'src/services/progress_service.dart'  show ProgressServiceException;
 
 // ── PDF picker ────────────────────────────────────────────────────────────────
@@ -39,9 +41,11 @@ export 'src/viewer/pdf_reading_tracker_viewer.dart'
 // ── Internal imports for the static facade ───────────────────────────────────
 import 'src/models/bookmark.dart';
 import 'src/models/highlight.dart';
+import 'src/models/note.dart';
 import 'src/models/reading_progress.dart';
 import 'src/services/bookmark_service.dart';
 import 'src/services/highlight_service.dart';
+import 'src/services/note_service.dart';
 import 'src/services/progress_service.dart';
 
 /// Top-level static façade for low-level tracker operations.
@@ -52,6 +56,11 @@ import 'src/services/progress_service.dart';
 /// **v2.4.0 additions**
 /// - [addHighlight] / [getHighlights] / [removeHighlight] /
 ///   [clearHighlights] / [clearAllHighlights] — persistent text highlights.
+///
+/// **v2.6.0 additions**
+/// - [addNote] / [getNotes] / [updateNote] / [removeNote] /
+///   [clearNotes] / [clearAllNotes] — standalone, page-scoped notes,
+///   independent of highlight annotations. See [Note]'s doc comment.
 ///
 /// For the all-in-one reader widget, use [PdfReadingTrackerViewer].
 abstract final class PdfReadingTracker {
@@ -96,4 +105,20 @@ abstract final class PdfReadingTracker {
       HighlightService.instance.clearHighlights(pdfId);
   static Future<void>            clearAllHighlights() =>
       HighlightService.instance.clearAllHighlights();
+
+  // ── Notes API (v2.6.0) ──────────────────────────────────────────────────────
+  static Future<int>        addNote(Note note) =>
+      NoteService.instance.addNote(note);
+  static Future<List<Note>> getNotes(String pdfId) =>
+      NoteService.instance.getNotes(pdfId);
+  static Future<List<Note>> getNotesForPage(String pdfId, int page) =>
+      NoteService.instance.getNotesForPage(pdfId, page);
+  static Future<bool>       updateNoteText(int id, String text) =>
+      NoteService.instance.updateNote(id, text);
+  static Future<bool>       removeNote(int id) =>
+      NoteService.instance.removeNote(id);
+  static Future<void>       clearNotes(String pdfId) =>
+      NoteService.instance.clearNotes(pdfId);
+  static Future<void>       clearAllNotes() =>
+      NoteService.instance.clearAllNotes();
 }

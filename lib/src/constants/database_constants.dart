@@ -9,6 +9,7 @@ abstract final class DatabaseConstants {
   static const String tableReadingProgress = 'reading_progress';
   static const String tableBookmarks        = 'bookmarks';
   static const String tableHighlights       = 'highlights';
+  static const String tableNotes            = 'notes';
 
   // ---------------------------------------------------------------------------
   // Shared columns
@@ -19,6 +20,7 @@ abstract final class DatabaseConstants {
   static const String columnPage      = 'page';
   static const String columnNote      = 'note';
   static const String columnCreatedAt = 'created_at';
+  static const String columnUpdatedAt = 'updated_at';
 
   // ---------------------------------------------------------------------------
   // reading_progress columns
@@ -35,15 +37,27 @@ abstract final class DatabaseConstants {
   // highlights columns
   // ---------------------------------------------------------------------------
 
-  static const String columnSelectedText = 'selected_text';
+  static const String columnSelectedText   = 'selected_text';
 
   /// Pipe-separated list of "left,top,right,bottom" rect strings.
-  /// Replaces the old single-rect `bounds` column.
-  static const String columnRectList   = 'rect_list';
-  static const String columnColorValue = 'color_value';
+  static const String columnRectList       = 'rect_list';
+  static const String columnColorValue     = 'color_value';
+
+  /// Annotation type string — one of: 'highlight', 'underline',
+  /// 'strikethrough', 'squiggly'.
+  /// Added in schema v6. Existing rows default to 'highlight'.
+  static const String columnAnnotationType = 'annotation_type';
 
   // ---------------------------------------------------------------------------
-  // DDL
+  // notes columns
+  // ---------------------------------------------------------------------------
+
+  /// Note body text. Distinct column name from the legacy `highlights.note`
+  /// column so the two concepts never collide in a shared query.
+  static const String columnNoteText = 'note_text';
+
+  // ---------------------------------------------------------------------------
+  // DDL — reading_progress (unchanged)
   // ---------------------------------------------------------------------------
 
   static const String createReadingProgressTable = '''
@@ -60,6 +74,10 @@ abstract final class DatabaseConstants {
     )
   ''';
 
+  // ---------------------------------------------------------------------------
+  // DDL — bookmarks (unchanged)
+  // ---------------------------------------------------------------------------
+
   static const String createBookmarksTable = '''
     CREATE TABLE IF NOT EXISTS $tableBookmarks (
       $columnId        INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -74,17 +92,22 @@ abstract final class DatabaseConstants {
     )
   ''';
 
-  /// highlights table — supports multiple rects per row via [columnRectList].
+  // ---------------------------------------------------------------------------
+  // DDL — highlights v6 (adds annotation_type column)
+  // ---------------------------------------------------------------------------
+
+  /// Full highlights table DDL used on fresh installs (schema v7+).
   static const String createHighlightsTable = '''
     CREATE TABLE IF NOT EXISTS $tableHighlights (
-      $columnId           INTEGER PRIMARY KEY AUTOINCREMENT,
-      $columnPdfId        TEXT    NOT NULL,
-      $columnPage         INTEGER NOT NULL,
-      $columnSelectedText TEXT    NOT NULL,
-      $columnRectList     TEXT    NOT NULL,
-      $columnColorValue   INTEGER NOT NULL,
-      $columnCreatedAt    TEXT    NOT NULL,
-      $columnNote         TEXT,
+      $columnId             INTEGER PRIMARY KEY AUTOINCREMENT,
+      $columnPdfId          TEXT    NOT NULL,
+      $columnPage           INTEGER NOT NULL,
+      $columnSelectedText   TEXT    NOT NULL,
+      $columnRectList       TEXT    NOT NULL,
+      $columnColorValue     INTEGER NOT NULL,
+      $columnAnnotationType TEXT    NOT NULL DEFAULT 'highlight',
+      $columnCreatedAt      TEXT    NOT NULL,
+      $columnNote           TEXT,
       FOREIGN KEY ($columnPdfId)
         REFERENCES $tableReadingProgress ($columnPdfId)
         ON DELETE CASCADE
@@ -94,5 +117,40 @@ abstract final class DatabaseConstants {
   static const String createHighlightsIndex = '''
     CREATE INDEX IF NOT EXISTS idx_highlights_pdf_page
     ON $tableHighlights ($columnPdfId, $columnPage)
+  ''';
+
+  // ---------------------------------------------------------------------------
+  // DDL — notes (new in schema v7)
+  // ---------------------------------------------------------------------------
+
+  /// Standalone, page-scoped notes — independent of [tableHighlights].
+  static const String createNotesTable = '''
+    CREATE TABLE IF NOT EXISTS $tableNotes (
+      $columnId        INTEGER PRIMARY KEY AUTOINCREMENT,
+      $columnPdfId     TEXT    NOT NULL,
+      $columnPage      INTEGER NOT NULL,
+      $columnNoteText  TEXT    NOT NULL,
+      $columnCreatedAt TEXT    NOT NULL,
+      $columnUpdatedAt TEXT    NOT NULL,
+      FOREIGN KEY ($columnPdfId)
+        REFERENCES $tableReadingProgress ($columnPdfId)
+        ON DELETE CASCADE
+    )
+  ''';
+
+  static const String createNotesIndex = '''
+    CREATE INDEX IF NOT EXISTS idx_notes_pdf_page
+    ON $tableNotes ($columnPdfId, $columnPage)
+  ''';
+
+  // ---------------------------------------------------------------------------
+  // Migration DDL — v5 → v6
+  // Adds annotation_type to an existing highlights table without dropping it.
+  // Existing rows default to 'highlight', preserving all saved annotations.
+  // ---------------------------------------------------------------------------
+
+  static const String migrateHighlightsV5ToV6 = '''
+    ALTER TABLE $tableHighlights
+    ADD COLUMN $columnAnnotationType TEXT NOT NULL DEFAULT 'highlight'
   ''';
 }

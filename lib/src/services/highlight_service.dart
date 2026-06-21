@@ -8,6 +8,10 @@ import '../models/highlight.dart';
 ///
 /// All CRUD operations keep the in-memory list in [PdfViewerController] as the
 /// source of truth; this service handles only durable storage.
+///
+/// ### v2.2.0 additions
+/// - [updateAnnotationType] — lets callers change the visual type of a saved
+///   annotation without deleting and re-inserting the row.
 class HighlightService {
   HighlightService._internal();
   static final HighlightService instance = HighlightService._internal();
@@ -29,7 +33,8 @@ class HighlightService {
       );
     } on DatabaseException catch (e, st) {
       throw HighlightServiceException(
-        'addHighlight failed for pdfId="${highlight.pdfId}", page=${highlight.page}.',
+        'addHighlight failed for pdfId="${highlight.pdfId}", '
+            'page=${highlight.page}.',
         cause: e, stackTrace: st,
       );
     }
@@ -39,7 +44,7 @@ class HighlightService {
   /// Returns `true` if a row was updated.
   Future<bool> updateNote(int id, String? note) async {
     try {
-      final db      = await _db;
+      final db       = await _db;
       final affected = await db.update(
         DatabaseConstants.tableHighlights,
         {DatabaseConstants.columnNote: note},
@@ -72,6 +77,25 @@ class HighlightService {
     }
   }
 
+  /// Updates the [annotationType] of a saved annotation.
+  /// Returns `true` if a row was updated.
+  Future<bool> updateAnnotationType(int id, AnnotationType type) async {
+    try {
+      final db       = await _db;
+      final affected = await db.update(
+        DatabaseConstants.tableHighlights,
+        {DatabaseConstants.columnAnnotationType: type.dbValue},
+        where:     '${DatabaseConstants.columnId} = ?',
+        whereArgs: [id],
+      );
+      return affected > 0;
+    } on DatabaseException catch (e, st) {
+      throw HighlightServiceException(
+        'updateAnnotationType failed for id=$id.', cause: e, stackTrace: st,
+      );
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // Read
   // ---------------------------------------------------------------------------
@@ -90,7 +114,8 @@ class HighlightService {
       return rows.map(Highlight.fromMap).toList(growable: false);
     } on DatabaseException catch (e, st) {
       throw HighlightServiceException(
-        'getHighlights failed for pdfId="$pdfId".', cause: e, stackTrace: st,
+        'getHighlights failed for pdfId="$pdfId".',
+        cause: e, stackTrace: st,
       );
     } catch (e, st) {
       throw HighlightServiceException(
@@ -150,7 +175,8 @@ class HighlightService {
       );
     } on DatabaseException catch (e, st) {
       throw HighlightServiceException(
-        'clearHighlights failed for pdfId="$pdfId".', cause: e, stackTrace: st,
+        'clearHighlights failed for pdfId="$pdfId".',
+        cause: e, stackTrace: st,
       );
     }
   }
