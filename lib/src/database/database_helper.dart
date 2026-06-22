@@ -7,21 +7,23 @@ import '../constants/database_constants.dart';
 /// Opens and manages the application SQLite database.
 ///
 /// ### Schema version history
-/// | Version | Change                                                          |
-/// |---------|-----------------------------------------------------------------|
-/// | 1       | reading_progress + bookmarks                                    |
-/// | 2       | reading_progress: added file_path                               |
-/// | 3       | reading_progress: added title                                   |
-/// | 4       | highlights table (old schema with single `bounds` column)       |
-/// | 5       | highlights: replaced `bounds` with `rect_list` (multi-rect)     |
-/// | 6       | highlights: added `annotation_type` TEXT DEFAULT 'highlight'    |
-/// | 7       | notes table — standalone, page-scoped notes                     |
+/// | Version | Change                                                                   |
+/// |---------|--------------------------------------------------------------------------|
+/// | 1       | reading_progress + bookmarks                                             |
+/// | 2       | reading_progress: added file_path                                        |
+/// | 3       | reading_progress: added title                                            |
+/// | 4       | highlights table (old schema with single `bounds` column)                |
+/// | 5       | highlights: replaced `bounds` with `rect_list` (multi-rect)              |
+/// | 6       | highlights: added `annotation_type` TEXT DEFAULT 'highlight'             |
+/// | 7       | notes table — standalone page-scoped notes (superseded by v8)            |
+/// | 8       | notes table rebuilt — added note_selected_text + note_rect_list columns  |
+///           | (old page-level notes had no text context and are not migrated)         |
 class DatabaseHelper {
   DatabaseHelper._internal();
   static final DatabaseHelper instance = DatabaseHelper._internal();
 
   static const String _kDbName    = 'pdf_reading_tracker.db';
-  static const int    _kDbVersion = 7;
+  static const int    _kDbVersion = 8;
 
   Database? _database;
 
@@ -77,7 +79,6 @@ class DatabaseHelper {
     }
 
     if (oldVersion < 4) {
-      // v3 → v4: old highlights table with single `bounds` column.
       await db.execute('''
         CREATE TABLE IF NOT EXISTS ${DatabaseConstants.tableHighlights} (
           ${DatabaseConstants.columnId}           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -97,9 +98,6 @@ class DatabaseHelper {
     }
 
     if (oldVersion < 5) {
-      // v4 → v5: old screen-space rects cannot be converted to PDF page-space
-      // without the document, so the table is rebuilt. Old highlights lost —
-      // this was documented in the v5 release.
       await db.execute(
           'DROP TABLE IF EXISTS ${DatabaseConstants.tableHighlights}');
       await db.execute(DatabaseConstants.createHighlightsTable);
@@ -107,17 +105,40 @@ class DatabaseHelper {
     }
 
     if (oldVersion < 6) {
-      // v5 → v6: non-destructive column addition.
-      // Existing highlight rows default to annotation_type = 'highlight',
-      // preserving all previously saved highlights without any data loss.
       await db.execute(DatabaseConstants.migrateHighlightsV5ToV6);
     }
 
     if (oldVersion < 7) {
-      // v6 → v7: new standalone notes table. Purely additive — does not
-      // touch highlights, bookmarks, or reading_progress in any way.
+      // v6 → v7: original page-level notes table (now superseded by v8).
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS ${DatabaseConstants.tableNotes} (
+          ${DatabaseConstants.columnId}        INTEGER PRIMARY KEY AUTOINCREMENT,
+          ${DatabaseConstants.columnPdfId}     TEXT    NOT NULL,
+          ${DatabaseConstants.columnPage}      INTEGER NOT NULL,
+          ${DatabaseConstants.columnNoteText}  TEXT    NOT NULL,
+          ${DatabaseConstants.columnCreatedAt} TEXT    NOT NULL,
+          ${DatabaseConstants.columnUpdatedAt} TEXT    NOT NULL,
+          FOREIGN KEY (${DatabaseConstants.columnPdfId})
+            REFERENCES ${DatabaseConstants.tableReadingProgress} (${DatabaseConstants.columnPdfId})
+            ON DELETE CASCADE
+        )
+      ''');
+      await db.execute(DatabaseConstants.createNotesIndex);
+    }
+
+    if (oldVersion < 8) {
+      // v7 → v8: rebuild notes table to add note_selected_text and
+      // note_rect_list. Old page-level rows have no text context so they are
+      // not migrated — they were functionally identical to bookmarks.
+      //
+      // We use rename + recreate because Android SQLite < 3.35 has no
+      // DROP COLUMN and we need to change the schema, not just add columns
+      // (the new columns are NOT NULL with meaningful defaults, but the real
+      // semantic change is that notes are now text-anchored).
+      await db.execute(DatabaseConstants.migrateNotesV7RenameOld);
       await db.execute(DatabaseConstants.createNotesTable);
       await db.execute(DatabaseConstants.createNotesIndex);
+      await db.execute(DatabaseConstants.migrateNotesV7DropBackup);
     }
 
     debugPrint('[DatabaseHelper] Upgrade complete → v$newVersion');

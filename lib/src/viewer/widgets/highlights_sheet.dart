@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../models/highlight.dart';
+import 'safe_note_dialog.dart';
 
 /// Shows the annotation (highlight/underline/strikethrough/squiggly) list
 /// in a modal bottom sheet — the "Annotation History" screen (Issue 2).
@@ -108,23 +109,42 @@ class _HighlightsSheetContentState extends State<_HighlightsSheetContent> {
   Future<void> _editNote(Highlight h) async {
     if (h.id == null) return;
 
-    final newNote = await _showEditNoteDialog(context, h);
-    if (newNote == null || !mounted) return; // cancelled
+    // Use SafeNoteDialog (useRootNavigator, owned controller lifecycle)
+    // so the TextEditingController is never at risk of being orphaned.
+    final result = await showSafeNoteDialog(
+      context:     context,
+      title:       'Note — Page ${h.page + 1}',
+      initialText: h.note ?? '',
+      allowDelete: h.note != null && h.note!.isNotEmpty,
+    );
+    if (result == null || !mounted) return; // cancelled
 
     setState(() => _editingNote.add(h.id!));
     try {
-      final trimmed = newNote.trim().isEmpty ? null : newNote.trim();
-      await widget.onEditNote(h.id!, trimmed);
-      if (mounted) {
-        setState(() {
-          final idx = _items.indexWhere((x) => x.id == h.id);
-          if (idx != -1) {
-            _items[idx] = _items[idx].copyWith(
-              note: trimmed,
-              clearNote: trimmed == null,
-            );
-          }
-        });
+      if (result.deleted) {
+        await widget.onEditNote(h.id!, null);
+        if (mounted) {
+          setState(() {
+            final idx = _items.indexWhere((x) => x.id == h.id);
+            if (idx != -1) {
+              _items[idx] = _items[idx].copyWith(clearNote: true);
+            }
+          });
+        }
+      } else {
+        final trimmed = result.text.trim().isEmpty ? null : result.text.trim();
+        await widget.onEditNote(h.id!, trimmed);
+        if (mounted) {
+          setState(() {
+            final idx = _items.indexWhere((x) => x.id == h.id);
+            if (idx != -1) {
+              _items[idx] = _items[idx].copyWith(
+                note:      trimmed,
+                clearNote: trimmed == null,
+              );
+            }
+          });
+        }
       }
     } finally {
       if (mounted) setState(() => _editingNote.remove(h.id));
@@ -213,7 +233,7 @@ class _HighlightsSheetContentState extends State<_HighlightsSheetContent> {
                   leading: CircleAvatar(
                     backgroundColor: isCurrent
                         ? cs.primary
-                        : dotColor.withOpacity(0.9),
+                        : dotColor.withAlpha(229), // 90% opacity
                     foregroundColor:
                     isCurrent ? cs.onPrimary : Colors.black87,
                     child: Icon(meta.icon, size: 18),
@@ -303,54 +323,7 @@ class _HighlightsSheetContentState extends State<_HighlightsSheetContent> {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Edit-note dialog (mirrors bookmarks_sheet.dart's _showEditNoteDialog)
-// ---------------------------------------------------------------------------
-
-Future<String?> _showEditNoteDialog(
-    BuildContext context,
-    Highlight highlight,
-    ) async {
-  final ctrl = TextEditingController(text: highlight.note ?? '');
-  final pageLabel = 'Page ${highlight.page + 1}';
-  final hasNote = highlight.note != null && highlight.note!.isNotEmpty;
-
-  try {
-    return await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('Note for $pageLabel'),
-        content: TextField(
-          controller: ctrl,
-          decoration: const InputDecoration(
-            hintText: 'Write a note… (leave empty to clear)',
-            border: OutlineInputBorder(),
-          ),
-          maxLines: 4,
-          autofocus: true,
-          textCapitalization: TextCapitalization.sentences,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(), // null = cancelled
-            child: const Text('Cancel'),
-          ),
-          if (hasNote)
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(''), // clear note
-              child: const Text('Clear note'),
-            ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(ctrl.text),
-            child: const Text('Save'),
-          ),
-        ],
-      ),
-    );
-  } finally {
-    ctrl.dispose();
-  }
-}
+// _showEditNoteDialog removed — replaced with showSafeNoteDialog in _editNote.
 
 // ---------------------------------------------------------------------------
 // Empty state

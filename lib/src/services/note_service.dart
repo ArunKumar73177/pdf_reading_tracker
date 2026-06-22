@@ -6,9 +6,9 @@ import '../models/note.dart';
 
 /// SQLite-backed persistence service for [Note] records.
 ///
-/// Notes are independent of [Highlight] annotations — see [Note]'s doc
-/// comment. All CRUD here returns plain values/lists; the controller layer
-/// owns the in-memory cache and notifier plumbing.
+/// Notes are text-anchored (v2.7.0): each note carries the selected text and
+/// its bounding rects. All CRUD here returns plain values/lists; the
+/// controller layer owns the in-memory cache and notifier plumbing.
 class NoteService {
   NoteService._internal();
   static final NoteService instance = NoteService._internal();
@@ -21,11 +21,9 @@ class NoteService {
 
   /// Inserts a new note and returns its auto-incremented row id.
   ///
-  /// Throws [NoteServiceException] if [text] is empty — callers should
-  /// trim and validate before calling, but this is a final guard against
-  /// persisting blank rows.
+  /// Throws [NoteServiceException] if [noteText] is empty.
   Future<int> addNote(Note note) async {
-    if (note.text.trim().isEmpty) {
+    if (note.noteText.trim().isEmpty) {
       throw const NoteServiceException('Cannot save an empty note.');
     }
     try {
@@ -44,10 +42,10 @@ class NoteService {
     }
   }
 
-  /// Updates the [text] and [updatedAt] of an existing note.
+  /// Updates the [noteText] and [updatedAt] of an existing note.
   /// Returns `true` if a row was updated.
-  Future<bool> updateNote(int id, String text) async {
-    if (text.trim().isEmpty) {
+  Future<bool> updateNote(int id, String noteText) async {
+    if (noteText.trim().isEmpty) {
       throw const NoteServiceException('Cannot save an empty note.');
     }
     try {
@@ -55,11 +53,11 @@ class NoteService {
       final affected = await db.update(
         DatabaseConstants.tableNotes,
         {
-          DatabaseConstants.columnNoteText: text,
+          DatabaseConstants.columnNoteText: noteText,
           DatabaseConstants.columnUpdatedAt:
           DateTime.now().toUtc().toIso8601String(),
         },
-        where: '${DatabaseConstants.columnId} = ?',
+        where:     '${DatabaseConstants.columnId} = ?',
         whereArgs: [id],
       );
       return affected > 0;
@@ -80,12 +78,12 @@ class NoteService {
   /// recently updated first within the same page.
   Future<List<Note>> getNotes(String pdfId) async {
     try {
-      final db = await _db;
+      final db   = await _db;
       final rows = await db.query(
         DatabaseConstants.tableNotes,
-        where: '${DatabaseConstants.columnPdfId} = ?',
+        where:     '${DatabaseConstants.columnPdfId} = ?',
         whereArgs: [pdfId],
-        orderBy: '${DatabaseConstants.columnPage} ASC, '
+        orderBy:   '${DatabaseConstants.columnPage} ASC, '
             '${DatabaseConstants.columnUpdatedAt} DESC',
       );
       return rows.map(Note.fromMap).toList(growable: false);
@@ -107,13 +105,13 @@ class NoteService {
   /// Returns all notes for [pdfId] on a single [page] (zero-based).
   Future<List<Note>> getNotesForPage(String pdfId, int page) async {
     try {
-      final db = await _db;
+      final db   = await _db;
       final rows = await db.query(
         DatabaseConstants.tableNotes,
-        where: '${DatabaseConstants.columnPdfId} = ? '
+        where:     '${DatabaseConstants.columnPdfId} = ? '
             'AND ${DatabaseConstants.columnPage} = ?',
         whereArgs: [pdfId, page],
-        orderBy: '${DatabaseConstants.columnUpdatedAt} DESC',
+        orderBy:   '${DatabaseConstants.columnUpdatedAt} DESC',
       );
       return rows.map(Note.fromMap).toList(growable: false);
     } on DatabaseException catch (e, st) {
@@ -132,10 +130,10 @@ class NoteService {
   /// Deletes the note identified by [id]. Returns `true` if deleted.
   Future<bool> removeNote(int id) async {
     try {
-      final db = await _db;
+      final db       = await _db;
       final affected = await db.delete(
         DatabaseConstants.tableNotes,
-        where: '${DatabaseConstants.columnId} = ?',
+        where:     '${DatabaseConstants.columnId} = ?',
         whereArgs: [id],
       );
       return affected > 0;
@@ -154,7 +152,7 @@ class NoteService {
       final db = await _db;
       await db.delete(
         DatabaseConstants.tableNotes,
-        where: '${DatabaseConstants.columnPdfId} = ?',
+        where:     '${DatabaseConstants.columnPdfId} = ?',
         whereArgs: [pdfId],
       );
     } on DatabaseException catch (e, st) {
@@ -172,7 +170,8 @@ class NoteService {
       final db = await _db;
       await db.delete(DatabaseConstants.tableNotes);
     } on DatabaseException catch (e, st) {
-      throw NoteServiceException('clearAllNotes failed.', cause: e, stackTrace: st);
+      throw NoteServiceException(
+          'clearAllNotes failed.', cause: e, stackTrace: st);
     }
   }
 }
@@ -184,8 +183,8 @@ class NoteService {
 class NoteServiceException implements Exception {
   const NoteServiceException(this.message, {this.cause, this.stackTrace});
 
-  final String message;
-  final Object? cause;
+  final String      message;
+  final Object?     cause;
   final StackTrace? stackTrace;
 
   @override

@@ -6,7 +6,7 @@ description: >
   lets users pick PDFs from their device, and shows recent/continue-reading
   sections. All backed by SQLite.
 
-version: 2.1.0
+version: 2.7.0
 
 homepage: https://github.com/ArunKumar73177/pdf_reading_tracker
 repository: https://github.com/ArunKumar73177/pdf_reading_tracker

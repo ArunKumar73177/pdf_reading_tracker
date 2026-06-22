@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart' as sf;
 
+import '../models/note.dart';
 import '../services/bookmark_service.dart';
 import 'pdf_search_controller.dart';
 import 'pdf_viewer_controller.dart';
@@ -32,7 +33,7 @@ class PdfViewerTheme {
 }
 
 // ---------------------------------------------------------------------------
-// Public widget
+// PdfReadingTrackerViewer
 // ---------------------------------------------------------------------------
 
 class PdfReadingTrackerViewer extends StatefulWidget {
@@ -62,29 +63,24 @@ class PdfReadingTrackerViewer extends StatefulWidget {
   final String? filePath;
   final void Function(int page, int total)? onPageChanged;
   final PdfViewerTheme? theme;
-
-  /// When `false` (default), the viewer scrolls vertically — continuous,
-  /// single-column reading. When `true`, the viewer swipes horizontally
-  /// page by page.
   final bool swipeHorizontal;
   final bool enableDoubleTap;
   final bool showAppBar;
   final bool showBottomBar;
   final bool showBookmarkFab;
   final bool enableSearch;
-
-  /// When `true`, text selection triggers the annotation action bar.
   final bool enableHighlight;
 
   @override
-  State<PdfReadingTrackerViewer> createState() => _PdfReadingTrackerViewerState();
+  State<PdfReadingTrackerViewer> createState() =>
+      _PdfReadingTrackerViewerState();
 }
 
 class _PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
   late final PdfViewerController _ctrl;
 
-  final GlobalKey<sf.SfPdfViewerState> _sfViewerKey = GlobalKey<sf.SfPdfViewerState>();
-  final GlobalKey _bottomBarKey = GlobalKey();
+  final GlobalKey<sf.SfPdfViewerState> _sfViewerKey =
+  GlobalKey<sf.SfPdfViewerState>();
 
   bool _isLoading = true;
   String? _error;
@@ -92,18 +88,8 @@ class _PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
   int _initialPage = 0;
   bool _searchVisible = false;
 
-  /// The note staged for the *current, not-yet-committed* annotation
-  /// (i.e. before "Apply" is tapped). Display-only state — the actual
-  /// editor is `SafeNoteDialog`, which owns its own controller lifecycle
-  /// completely independently of this field.
   String? _pendingAnnotationNote;
-
-  /// Guards against opening more than one dialog at a time — e.g. a rapid
-  /// double-tap on the note button. Each dialog call checks this before
-  /// pushing a new route and resets it when the route resolves.
   bool _dialogOpen = false;
-
-  double? _bottomBarHeight;
 
   @override
   void initState() {
@@ -115,75 +101,45 @@ class _PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
       filePath: widget.filePath,
       onDeviceFilePath: widget.filePath,
     );
-    _ctrl.addListener(_onUpdate);
+    _ctrl.addListener(_onControllerUpdate);
     _ctrl.init();
-    if (widget.showBottomBar) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _measureBottomBarHeight());
-    }
   }
 
   @override
   void dispose() {
-    _ctrl.removeListener(_onUpdate);
+    _ctrl.removeListener(_onControllerUpdate);
     _ctrl.dispose();
     super.dispose();
   }
 
-  void _onUpdate() {
+  void _onControllerUpdate() {
     if (!mounted) return;
-    final loadingChanged = _ctrl.isLoading != _isLoading;
-    final errorChanged = _ctrl.error != _error;
-    final pathChanged = _ctrl.resolvedFilePath != _resolvedFilePath;
-    if (!loadingChanged && !errorChanged && !pathChanged) return;
+    if (_ctrl.isLoading == _isLoading &&
+        _ctrl.error == _error &&
+        _ctrl.resolvedFilePath == _resolvedFilePath) return;
     setState(() {
       _isLoading = _ctrl.isLoading;
       _error = _ctrl.error;
       _resolvedFilePath = _ctrl.resolvedFilePath;
       _initialPage = _ctrl.initialPage;
     });
-    if (!loadingChanged || _isLoading) return;
-    if (widget.showBottomBar) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _measureBottomBarHeight());
-    }
   }
 
-  void _measureBottomBarHeight() {
-    if (!mounted) return;
-    final box = _bottomBarKey.currentContext?.findRenderObject() as RenderBox?;
-    if (box == null || !box.hasSize) return;
-    final measured = box.size.height;
-    if (_bottomBarHeight != null && (measured - _bottomBarHeight!).abs() < 0.5) {
-      return;
-    }
-    setState(() => _bottomBarHeight = measured);
-  }
-
-  // ---------------------------------------------------------------------------
+  // -------------------------------------------------------------------------
   // Annotation commit
-  // ---------------------------------------------------------------------------
+  // -------------------------------------------------------------------------
 
   void _commitAnnotation(AnnotationCommit commit) {
-    final textLines = _sfViewerKey.currentState?.getSelectedTextLines() ?? const [];
-
+    final textLines =
+        _sfViewerKey.currentState?.getSelectedTextLines() ?? const [];
     if (textLines.isEmpty) {
       _ctrl.captureTextSelection(null, null, null);
       return;
     }
-
     _ctrl.commitAnnotation(textLines: textLines, commit: commit);
     if (mounted) setState(() => _pendingAnnotationNote = null);
   }
 
-  /// Opens the note dialog for the *pending* (not-yet-committed)
-  /// annotation.
-  ///
-  /// **Crash fix:** [PdfViewerController.clearPdfSelection] is called
-  /// first — *before* the dialog route is pushed — tearing down
-  /// Syncfusion's native platform-level selection-handle overlay so it
-  /// cannot fire any further `onTextSelectionChanged` callbacks while the
-  /// dialog is open. The dialog itself ([showSafeNoteDialog]) owns a
-  /// fully independent `TextEditingController` lifecycle on the root
-  /// Navigator — see `safe_note_dialog.dart` for the full explanation.
   Future<void> _openPendingAnnotationNoteDialog() async {
     if (_dialogOpen) return;
     _dialogOpen = true;
@@ -193,14 +149,6 @@ class _PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
         title: 'Add note',
         initialText: _pendingAnnotationNote ?? '',
         allowDelete: _pendingAnnotationNote != null,
-        // Note: we intentionally do NOT clear the PDF text selection here,
-        // because this note is *for* the pending annotation — clearing it
-        // would drop the user's selection before they apply the highlight.
-        // The native selection-handle overlay does not interfere with this
-        // dialog because the dialog runs on the root Navigator, which is
-        // an entirely separate Element subtree from SfPdfViewer's overlay
-        // entries — see safe_note_dialog.dart's doc comment for why this
-        // structural isolation is what actually prevents the crash.
       );
       if (result == null || !mounted) return;
       setState(() {
@@ -211,26 +159,58 @@ class _PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // Standalone Notes (v2.6.0)
-  // ---------------------------------------------------------------------------
+  // -------------------------------------------------------------------------
+  // Notes
+  // -------------------------------------------------------------------------
 
-  /// Opens the note dialog to add a brand-new standalone note on the
-  /// current page (independent of any text selection / annotation).
+  /// Handles the "Add Note" FAB tap.
+  ///
+  /// ### Issue 1 fix — snapshot-based selection read
+  ///
+  /// When the user taps the note FAB, `SfPdfViewer` fires a deselection
+  /// event (`onTextSelectionChanged(null, null)`) before this method runs,
+  /// which would clear `_ctrl.pendingSelection`. We instead read
+  /// `_ctrl.snapshotSelection`, which is preserved through deselection
+  /// events and is only cleared after a note is saved or an annotation is
+  /// committed.
+  ///
+  /// After reading, `_ctrl.clearSnapshot()` is called inside the `finally`
+  /// block so the snapshot is consumed exactly once.
   Future<void> _handleAddNoteTap() async {
     if (_dialogOpen) return;
     _dialogOpen = true;
+
+    // Read the stable snapshot — not pendingSelection (which may be null
+    // because the viewer just fired a deselection event on FAB touch-down).
+    final snapshot = _ctrl.snapshotSelection;
+    final capturedText = snapshot?.selectedText ?? '';
+    final capturedRects = snapshot?.textLines
+        .map((l) => NoteRect(
+      left: l.bounds.left,
+      top: l.bounds.top,
+      right: l.bounds.right,
+      bottom: l.bounds.bottom,
+    ))
+        .toList(growable: false) ??
+        const <NoteRect>[];
+
     try {
       final result = await showSafeNoteDialog(
         context: context,
-        title: 'Add note — Page ${_ctrl.currentPage + 1}',
+        title: capturedText.isNotEmpty
+            ? 'Note for: "${capturedText.length > 40 ? '${capturedText.substring(0, 40)}…' : capturedText}"'
+            : 'Add note — Page ${_ctrl.currentPage + 1}',
         initialText: '',
         allowDelete: false,
         onOpen: _ctrl.clearPdfSelection,
       );
       if (result == null || result.deleted || !mounted) return;
       if (result.text.trim().isEmpty) return;
-      await _ctrl.addNote(result.text.trim());
+      await _ctrl.addNote(
+        noteText: result.text.trim(),
+        selectedText: capturedText,
+        rectList: capturedRects,
+      );
     } on Exception catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -238,6 +218,8 @@ class _PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
         backgroundColor: Theme.of(context).colorScheme.error,
       ));
     } finally {
+      // Always clear the snapshot — consumed or cancelled.
+      _ctrl.clearSnapshot();
       _dialogOpen = false;
     }
   }
@@ -253,9 +235,9 @@ class _PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
     if (page != null && mounted) await _ctrl.goToPage(page);
   }
 
-  // ---------------------------------------------------------------------------
-  // Handlers (unchanged)
-  // ---------------------------------------------------------------------------
+  // -------------------------------------------------------------------------
+  // Bookmarks
+  // -------------------------------------------------------------------------
 
   Future<void> _handleBookmarkTap() async {
     if (_dialogOpen) return;
@@ -270,7 +252,8 @@ class _PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
       );
       if (result == null || !mounted) return;
       final note = result.deleted ? null : result.text.trim();
-      await _ctrl.addBookmark(note: (note == null || note.isEmpty) ? null : note);
+      await _ctrl.addBookmark(
+          note: (note == null || note.isEmpty) ? null : note);
     } on BookmarkServiceException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -320,9 +303,9 @@ class _PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
     });
   }
 
-  // ---------------------------------------------------------------------------
+  // -------------------------------------------------------------------------
   // Build
-  // ---------------------------------------------------------------------------
+  // -------------------------------------------------------------------------
 
   @override
   Widget build(BuildContext context) {
@@ -334,8 +317,10 @@ class _PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
           ? Scaffold(
         appBar: AppBar(
           title: Text(widget.pdfTitle, overflow: TextOverflow.ellipsis),
-          backgroundColor: theme?.appBarBackgroundColor ?? cs.primaryContainer,
-          foregroundColor: theme?.appBarForegroundColor ?? cs.onPrimaryContainer,
+          backgroundColor:
+          theme?.appBarBackgroundColor ?? cs.primaryContainer,
+          foregroundColor:
+          theme?.appBarForegroundColor ?? cs.onPrimaryContainer,
         ),
         body: const Center(child: CircularProgressIndicator()),
       )
@@ -348,8 +333,10 @@ class _PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
           ? Scaffold(
         appBar: AppBar(
           title: Text(widget.pdfTitle, overflow: TextOverflow.ellipsis),
-          backgroundColor: theme?.appBarBackgroundColor ?? cs.primaryContainer,
-          foregroundColor: theme?.appBarForegroundColor ?? cs.onPrimaryContainer,
+          backgroundColor:
+          theme?.appBarBackgroundColor ?? cs.primaryContainer,
+          foregroundColor:
+          theme?.appBarForegroundColor ?? cs.onPrimaryContainer,
         ),
         body: errorBody,
       )
@@ -365,40 +352,45 @@ class _PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
       enableDoubleTap: widget.enableDoubleTap,
       enableHighlight: widget.enableHighlight,
       sfController: _ctrl.sfController,
-      bottomBarHeight: widget.showBottomBar ? _bottomBarHeight : 0,
       onPageChanged: (n) {
         _ctrl.onPageChanged(n);
         widget.onPageChanged?.call(_ctrl.currentPage, _ctrl.totalPages);
       },
-      onDocumentLoaded: (n) => _ctrl.onDocumentLoaded(n),
-      onDocumentLoadFailed: (desc) => _ctrl.onDocumentLoadFailed(desc),
+      // Issue 3 fix: pass ScrollMetrics so the controller can use
+      // pixels + maxScrollExtent for page detection.
+      onScrollUpdate: (metrics) {
+        _ctrl.onScrollUpdate(metrics);
+        widget.onPageChanged?.call(_ctrl.currentPage, _ctrl.totalPages);
+      },
+      onDocumentLoaded: _ctrl.onDocumentLoaded,
+      onDocumentLoadFailed: _ctrl.onDocumentLoadFailed,
       onTextSelectionChanged: (text, region) {
-        // Guard: if a dialog is currently open, ignore selection-change
-        // callbacks entirely. This is the second half of the crash fix —
-        // even though SafeNoteDialog is structurally isolated on the root
-        // Navigator, we additionally refuse to let stray selection events
-        // touch `highlightNotifier` while any dialog is in flight, so the
-        // AnnotationActionBar can never rebuild out from under a dialog.
         if (_dialogOpen) return;
         final lines = _sfViewerKey.currentState?.getSelectedTextLines();
         _ctrl.captureTextSelection(text, region, lines);
       },
     );
 
-    if (!widget.showAppBar) {
-      return _wrapWithAnnotationBar(viewerCore);
-    }
+    final body = _buildOverlayStack(viewerCore);
+
+    if (!widget.showAppBar) return body;
 
     return Scaffold(
       appBar: PreferredSize(
-        preferredSize: Size.fromHeight(kToolbarHeight + (_searchVisible ? 56.0 : 0.0)),
+        preferredSize: Size.fromHeight(
+            kToolbarHeight + (_searchVisible ? 56.0 : 0.0)),
         child: ListenableBuilder(
-          listenable: Listenable.merge(
-              [_ctrl.bookmarksNotifier, _ctrl.highlightNotifier, _ctrl.notesNotifier]),
+          listenable: Listenable.merge([
+            _ctrl.bookmarksNotifier,
+            _ctrl.highlightNotifier,
+            _ctrl.notesNotifier,
+          ]),
           builder: (_, __) => _AppBarWithSearch(
             title: widget.pdfTitle,
-            backgroundColor: theme?.appBarBackgroundColor ?? cs.primaryContainer,
-            foregroundColor: theme?.appBarForegroundColor ?? cs.onPrimaryContainer,
+            backgroundColor:
+            theme?.appBarBackgroundColor ?? cs.primaryContainer,
+            foregroundColor:
+            theme?.appBarForegroundColor ?? cs.onPrimaryContainer,
             bookmarkCount: _ctrl.bookmarks.length,
             highlightCount: _ctrl.highlights.length,
             noteCount: _ctrl.notes.length,
@@ -413,22 +405,11 @@ class _PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
           ),
         ),
       ),
-      body: _wrapWithAnnotationBar(viewerCore),
-      bottomNavigationBar: widget.showBottomBar
-          ? ListenableBuilder(
-        listenable: Listenable.merge([_ctrl.pageNotifier, _ctrl.savingNotifier]),
-        builder: (_, __) => ReaderBottomBar(
-          key: _bottomBarKey,
-          currentPage: _ctrl.currentPage,
-          totalPages: _ctrl.totalPages,
-          progressPct: _ctrl.progressPct,
-          isSaving: _ctrl.isSavingProgress,
-        ),
-      )
-          : null,
+      body: body,
       floatingActionButton: widget.showBookmarkFab
           ? ListenableBuilder(
-        listenable: Listenable.merge([_ctrl.pageNotifier, _ctrl.bookmarksNotifier]),
+        listenable: Listenable.merge(
+            [_ctrl.pageNotifier, _ctrl.bookmarksNotifier]),
         builder: (_, __) => Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -440,7 +421,8 @@ class _PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
             ),
             const SizedBox(height: 12),
             BookmarkFab(
-              isBookmarked: _ctrl.bookmarks.any((b) => b.page == _ctrl.currentPage),
+              isBookmarked: _ctrl.bookmarks
+                  .any((b) => b.page == _ctrl.currentPage),
               onPressed: _handleBookmarkTap,
             ),
           ],
@@ -450,51 +432,66 @@ class _PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
     );
   }
 
-  /// Wraps [child] in a [Stack] that overlays [AnnotationActionBar] when the
-  /// user has an active text selection.
-  ///
-  /// **Crash fix (supersedes v2.5.2/v2.5.3):** [AnnotationActionBar] now
-  /// owns *no* dialog and *no* `TextEditingController` whatsoever — see its
-  /// updated doc comment. There is therefore nothing left in this widget's
-  /// subtree for a disposed-controller, duplicate-`GlobalKey`, or
-  /// wrong-build-scope race to attach to, regardless of how often this
-  /// `ListenableBuilder` rebuilds the bar while a dialog is open elsewhere
-  /// on the root Navigator.
-  Widget _wrapWithAnnotationBar(Widget child) {
-    if (!widget.enableHighlight) return child;
+  // -------------------------------------------------------------------------
+  // Overlay stack
+  // -------------------------------------------------------------------------
 
-    return ListenableBuilder(
-      listenable: _ctrl.highlightNotifier,
-      builder: (_, __) {
-        final pending = _ctrl.pendingSelection;
-        if (pending == null && _pendingAnnotationNote != null) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) setState(() => _pendingAnnotationNote = null);
-          });
-        }
-        return Stack(
-          children: [
-            child,
-            if (pending != null)
-              Positioned(
-                bottom: 80,
-                left: 12,
-                right: 12,
-                child: AnnotationActionBar(
-                  key: const ValueKey('annotation_action_bar'),
-                  selectedText: pending.selectedText,
-                  currentNote: _pendingAnnotationNote,
-                  onCommit: _commitAnnotation,
-                  onDismiss: () {
-                    if (mounted) setState(() => _pendingAnnotationNote = null);
-                    _ctrl.captureTextSelection(null, null, null);
-                  },
-                  onAddNote: _openPendingAnnotationNoteDialog,
-                ),
-              ),
-          ],
-        );
-      },
+  Widget _buildOverlayStack(Widget child) {
+    return Stack(
+      children: [
+        child,
+
+        ListenableBuilder(
+          listenable: _ctrl.highlightNotifier,
+          builder: (context, __) {
+            final pending = _ctrl.pendingSelection;
+
+            if (pending == null && _pendingAnnotationNote != null) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted) setState(() => _pendingAnnotationNote = null);
+              });
+            }
+
+            return Positioned(
+              bottom: 72,
+              left: 12,
+              right: 12,
+              child: (widget.enableHighlight && pending != null)
+                  ? AnnotationActionBar(
+                key: const ValueKey('annotation_action_bar'),
+                selectedText: pending.selectedText,
+                currentNote: _pendingAnnotationNote,
+                onCommit: _commitAnnotation,
+                onDismiss: () {
+                  if (mounted) {
+                    setState(() => _pendingAnnotationNote = null);
+                  }
+                  _ctrl.captureTextSelection(null, null, null);
+                  _ctrl.clearSnapshot();
+                },
+                onAddNote: _openPendingAnnotationNoteDialog,
+              )
+                  : const SizedBox.shrink(),
+            );
+          },
+        ),
+
+        if (widget.showBottomBar)
+          ListenableBuilder(
+            listenable: Listenable.merge([
+              _ctrl.pageNotifier,
+              _ctrl.savingNotifier,
+              _ctrl.notesNotifier,
+            ]),
+            builder: (_, __) => ReaderProgressOverlay(
+              currentPage: _ctrl.currentPage,
+              totalPages: _ctrl.totalPages,
+              progressPct: _ctrl.progressPct,
+              isSaving: _ctrl.isSavingProgress,
+              noteCountOnCurrentPage: _ctrl.noteCountOnCurrentPage,
+            ),
+          ),
+      ],
     );
   }
 }
@@ -548,7 +545,9 @@ class _AppBarWithSearch extends StatelessWidget {
           actions: [
             if (enableSearch)
               IconButton(
-                icon: Icon(searchVisible ? Icons.search_off_rounded : Icons.search_rounded),
+                icon: Icon(searchVisible
+                    ? Icons.search_off_rounded
+                    : Icons.search_rounded),
                 tooltip: searchVisible ? 'Close search' : 'Search text',
                 onPressed: onToggleSearch,
               ),
@@ -599,7 +598,7 @@ class _AppBarWithSearch extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
-// Stable SfPdfViewer host
+// _PdfViewerCore
 // ---------------------------------------------------------------------------
 
 class _PdfViewerCore extends StatelessWidget {
@@ -613,10 +612,10 @@ class _PdfViewerCore extends StatelessWidget {
     required this.enableHighlight,
     required this.sfController,
     required this.onPageChanged,
+    required this.onScrollUpdate,
     required this.onDocumentLoaded,
     required this.onDocumentLoadFailed,
     required this.onTextSelectionChanged,
-    this.bottomBarHeight,
   });
 
   final GlobalKey<sf.SfPdfViewerState> sfViewerKey;
@@ -627,23 +626,15 @@ class _PdfViewerCore extends StatelessWidget {
   final bool enableHighlight;
   final sf.PdfViewerController sfController;
   final void Function(int) onPageChanged;
+
+  /// Issue 3 fix: receives [ScrollMetrics] so the controller can use
+  /// `pixels` and `maxScrollExtent` for scroll-extent-based page detection.
+  final void Function(ScrollMetrics metrics) onScrollUpdate;
+
   final void Function(int) onDocumentLoaded;
   final void Function(String) onDocumentLoadFailed;
   final void Function(String?, Rect?) onTextSelectionChanged;
 
-  final double? bottomBarHeight;
-
-  /// Visual gap between pages in continuous (vertical) scroll mode.
-  ///
-  /// **Issue 4 fix:** previously hard-set to `0`, which made pages appear
-  /// stitched together with zero visual separation. `12` logical pixels
-  /// gives a clear seam between pages — matching the "Disclaimer" gap
-  /// visible in Image 2 — without affecting page-index calculations
-  /// (`pageSpacing` is purely a rendering gap; Syncfusion's own
-  /// `onPageChanged`/`PdfPageChangedDetails.newPageNumber` boundary logic
-  /// is unaffected by it) and without any measurable performance cost
-  /// (`pageSpacing` is consumed by Syncfusion's existing internal layout
-  /// pass — no extra widgets, no extra rebuilds).
   static const double _kPageSpacing = 12.0;
 
   @override
@@ -654,34 +645,17 @@ class _PdfViewerCore extends StatelessWidget {
       controller: sfController,
       initialPageNumber: initialPage + 1,
       pageLayoutMode: sf.PdfPageLayoutMode.continuous,
-
-      // Issue 4 fix — see _kPageSpacing doc comment above.
       pageSpacing: swipeHorizontal ? 0 : _kPageSpacing,
-
-      scrollDirection:
-      swipeHorizontal ? sf.PdfScrollDirection.horizontal : sf.PdfScrollDirection.vertical,
+      scrollDirection: swipeHorizontal
+          ? sf.PdfScrollDirection.horizontal
+          : sf.PdfScrollDirection.vertical,
       enableDoubleTapZooming: enableDoubleTap,
       canShowScrollHead: false,
       canShowScrollStatus: false,
-
-      // Issue 2 fix: Syncfusion's own *built-in* text selection context
-      // menu (Copy / Highlight / Underline / Strikethrough / Squiggly —
-      // the popup visible in the screenshots) is a separate, built-in
-      // overlay distinct from `enableTextSelection` (which must stay on
-      // for highlighting to work at all). `canShowTextSelectionMenu` is
-      // the documented Syncfusion property that toggles *only* that
-      // built-in menu. Setting it to false removes the competing popup
-      // entirely; text selection itself, `onTextSelectionChanged`, and
-      // `getSelectedTextLines()` are all unaffected, so our own
-      // AnnotationActionBar (the single, intentional surface for
-      // choosing annotation type/colour) keeps working exactly as
-      // before — it just no longer has to fight a second, built-in menu
-      // for the same screen region, and that menu's overlay can no
-      // longer remain alive behind the note dialog.
       canShowTextSelectionMenu: false,
       enableTextSelection: enableHighlight,
-
-      onPageChanged: (sf.PdfPageChangedDetails d) => onPageChanged(d.newPageNumber),
+      onPageChanged: (sf.PdfPageChangedDetails d) =>
+          onPageChanged(d.newPageNumber),
       onDocumentLoaded: (sf.PdfDocumentLoadedDetails d) =>
           onDocumentLoaded(d.document.pages.count),
       onDocumentLoadFailed: (sf.PdfDocumentLoadFailedDetails d) =>
@@ -692,44 +666,21 @@ class _PdfViewerCore extends StatelessWidget {
           : null,
     );
 
-    if (swipeHorizontal) return viewer;
-
-    return _SinglePageVerticalClamp(bottomBarHeight: bottomBarHeight, child: viewer);
-  }
-}
-
-/// Constrains [child] to the actual available viewport height, instead of
-/// letting Syncfusion's own page sizing decide it. See prior versions'
-/// documentation for the full rationale — unchanged in this release.
-class _SinglePageVerticalClamp extends StatelessWidget {
-  const _SinglePageVerticalClamp({required this.child, required this.bottomBarHeight});
-
-  final Widget child;
-  final double? bottomBarHeight;
-
-  @override
-  Widget build(BuildContext context) {
-    final bottomInset = MediaQuery.of(context).padding.bottom;
-    final reservedBottom = (bottomBarHeight ?? 0) + bottomInset;
-
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final availableHeight =
-        (constraints.maxHeight - reservedBottom).clamp(0.0, double.infinity);
-        return ClipRect(
-          child: SizedBox(
-            height: availableHeight,
-            width: constraints.maxWidth,
-            child: child,
-          ),
-        );
+    // Issue 3 fix: pass ScrollMetrics to onScrollUpdate.
+    // We use ScrollUpdateNotification so we get metrics on every scroll frame.
+    // `return false` — do not absorb; let SfPdfViewer handle the scroll.
+    return NotificationListener<ScrollUpdateNotification>(
+      onNotification: (notification) {
+        onScrollUpdate(notification.metrics);
+        return false;
       },
+      child: viewer,
     );
   }
 }
 
 // ---------------------------------------------------------------------------
-// Jump-to-page dialog (unchanged)
+// Jump-to-page dialog
 // ---------------------------------------------------------------------------
 
 Future<int?> _showJumpToPageDialog(
@@ -792,7 +743,7 @@ Future<int?> _showJumpToPageDialog(
 }
 
 // ---------------------------------------------------------------------------
-// Error view (unchanged)
+// Error view
 // ---------------------------------------------------------------------------
 
 class _ErrorView extends StatelessWidget {
@@ -812,7 +763,8 @@ class _ErrorView extends StatelessWidget {
           children: [
             Icon(Icons.error_outline_rounded, size: 64, color: cs.error),
             const SizedBox(height: 16),
-            Text('Could not load PDF', style: tt.titleMedium?.copyWith(color: cs.error)),
+            Text('Could not load PDF',
+                style: tt.titleMedium?.copyWith(color: cs.error)),
             const SizedBox(height: 8),
             Text(
               message,

@@ -1,7 +1,7 @@
 // ── Models ────────────────────────────────────────────────────────────────────
-export 'src/models/bookmark.dart'  show Bookmark;
-export 'src/models/highlight.dart' show Highlight, HighlightRect, AnnotationType, AnnotationColors;
-export 'src/models/note.dart'      show Note;
+export 'src/models/bookmark.dart'         show Bookmark;
+export 'src/models/highlight.dart'        show Highlight, HighlightRect, AnnotationType, AnnotationColors;
+export 'src/models/note.dart'             show Note, NoteRect;
 export 'src/models/reading_progress.dart' show ReadingProgress;
 
 // ── Service exceptions ────────────────────────────────────────────────────────
@@ -57,27 +57,27 @@ import 'src/services/progress_service.dart';
 /// - [addHighlight] / [getHighlights] / [removeHighlight] /
 ///   [clearHighlights] / [clearAllHighlights] — persistent text highlights.
 ///
-/// **v2.6.0 additions**
-/// - [addNote] / [getNotes] / [updateNote] / [removeNote] /
-///   [clearNotes] / [clearAllNotes] — standalone, page-scoped notes,
-///   independent of highlight annotations. See [Note]'s doc comment.
+/// **v2.7.0 — Notes redesign**
+/// Notes are now text-anchored: [addNote] requires [selectedText] and
+/// [rectList] so every note is attached to the text the user had selected.
+/// An empty [selectedText] is accepted for headless / programmatic use.
 ///
 /// For the all-in-one reader widget, use [PdfReadingTrackerViewer].
 abstract final class PdfReadingTracker {
   PdfReadingTracker._();
 
   // ── Progress API ───────────────────────────────────────────────────────────
-  static Future<int>                  saveProgress(ReadingProgress progress) =>
+  static Future<int>                   saveProgress(ReadingProgress progress) =>
       ProgressService.instance.saveProgress(progress);
-  static Future<ReadingProgress?>     getProgress(String pdfId) =>
+  static Future<ReadingProgress?>      getProgress(String pdfId) =>
       ProgressService.instance.getProgress(pdfId);
   static Future<List<ReadingProgress>> getAllProgress() =>
       ProgressService.instance.getAllProgress();
   static Future<List<ReadingProgress>> getRecentlyRead({int limit = 20}) =>
       ProgressService.instance.getRecentlyRead(limit: limit);
-  static Future<bool>                 deleteProgress(String pdfId) =>
+  static Future<bool>                  deleteProgress(String pdfId) =>
       ProgressService.instance.deleteProgress(pdfId);
-  static Future<void>                 clearAllProgress() =>
+  static Future<void>                  clearAllProgress() =>
       ProgressService.instance.clearAllProgress();
 
   // ── Bookmark API ───────────────────────────────────────────────────────────
@@ -106,19 +106,43 @@ abstract final class PdfReadingTracker {
   static Future<void>            clearAllHighlights() =>
       HighlightService.instance.clearAllHighlights();
 
-  // ── Notes API (v2.6.0) ──────────────────────────────────────────────────────
-  static Future<int>        addNote(Note note) =>
-      NoteService.instance.addNote(note);
+  // ── Notes API (v2.7.0 — text-anchored) ────────────────────────────────────
+  ///
+  /// [selectedText] and [rectList] anchor the note to the text the user
+  /// selected. When supplied, they override whatever [note.selectedText] /
+  /// [note.rectList] already carry — allowing callers to pass the raw
+  /// `Note.create(...)` object together with the live selection data
+  /// separately.  Pass empty values when creating notes programmatically.
+  static Future<int> addNote(
+      Note note, {
+        String selectedText = '',
+        List<NoteRect> rectList = const [],
+      }) {
+    // Merge caller-supplied anchor data so it is never silently dropped.
+    final anchored = (selectedText.isNotEmpty || rectList.isNotEmpty)
+        ? note.copyWith(
+      selectedText: selectedText.isNotEmpty ? selectedText : note.selectedText,
+      rectList:     rectList.isNotEmpty     ? rectList     : note.rectList,
+    )
+        : note;
+    return NoteService.instance.addNote(anchored);
+  }
+
   static Future<List<Note>> getNotes(String pdfId) =>
       NoteService.instance.getNotes(pdfId);
+
   static Future<List<Note>> getNotesForPage(String pdfId, int page) =>
       NoteService.instance.getNotesForPage(pdfId, page);
-  static Future<bool>       updateNoteText(int id, String text) =>
+
+  static Future<bool> updateNoteText(int id, String text) =>
       NoteService.instance.updateNote(id, text);
-  static Future<bool>       removeNote(int id) =>
+
+  static Future<bool> removeNote(int id) =>
       NoteService.instance.removeNote(id);
-  static Future<void>       clearNotes(String pdfId) =>
+
+  static Future<void> clearNotes(String pdfId) =>
       NoteService.instance.clearNotes(pdfId);
-  static Future<void>       clearAllNotes() =>
+
+  static Future<void> clearAllNotes() =>
       NoteService.instance.clearAllNotes();
 }

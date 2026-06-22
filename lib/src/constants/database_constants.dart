@@ -49,12 +49,18 @@ abstract final class DatabaseConstants {
   static const String columnAnnotationType = 'annotation_type';
 
   // ---------------------------------------------------------------------------
-  // notes columns
+  // notes columns (v8 — text-anchored notes)
   // ---------------------------------------------------------------------------
 
-  /// Note body text. Distinct column name from the legacy `highlights.note`
-  /// column so the two concepts never collide in a shared query.
+  /// Note body text.
   static const String columnNoteText = 'note_text';
+
+  /// The text the user had selected when they created this note.
+  static const String columnNoteSelectedText = 'note_selected_text';
+
+  /// Pipe-separated bounding rects of the selected text, same encoding as
+  /// [columnRectList] in the highlights table.
+  static const String columnNoteRectList = 'note_rect_list';
 
   // ---------------------------------------------------------------------------
   // DDL — reading_progress (unchanged)
@@ -93,10 +99,9 @@ abstract final class DatabaseConstants {
   ''';
 
   // ---------------------------------------------------------------------------
-  // DDL — highlights v6 (adds annotation_type column)
+  // DDL — highlights v6 (unchanged)
   // ---------------------------------------------------------------------------
 
-  /// Full highlights table DDL used on fresh installs (schema v7+).
   static const String createHighlightsTable = '''
     CREATE TABLE IF NOT EXISTS $tableHighlights (
       $columnId             INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -120,18 +125,26 @@ abstract final class DatabaseConstants {
   ''';
 
   // ---------------------------------------------------------------------------
-  // DDL — notes (new in schema v7)
+  // DDL — notes v8 (text-anchored; replaces v7 page-only notes table)
+  //
+  // MIGRATION STRATEGY for v7 → v8:
+  //   The v7 notes table had no selectedText / rectList columns.
+  //   SQLite does not support DROP COLUMN before 3.35 and Android SQLite
+  //   bundles are often older, so we rebuild the table via rename + recreate.
+  //   Old v7 notes are discarded (they were page-level duplicates of bookmarks
+  //   with no text context, so there is nothing meaningful to migrate).
   // ---------------------------------------------------------------------------
 
-  /// Standalone, page-scoped notes — independent of [tableHighlights].
   static const String createNotesTable = '''
     CREATE TABLE IF NOT EXISTS $tableNotes (
-      $columnId        INTEGER PRIMARY KEY AUTOINCREMENT,
-      $columnPdfId     TEXT    NOT NULL,
-      $columnPage      INTEGER NOT NULL,
-      $columnNoteText  TEXT    NOT NULL,
-      $columnCreatedAt TEXT    NOT NULL,
-      $columnUpdatedAt TEXT    NOT NULL,
+      $columnId               INTEGER PRIMARY KEY AUTOINCREMENT,
+      $columnPdfId            TEXT    NOT NULL,
+      $columnPage             INTEGER NOT NULL,
+      $columnNoteText         TEXT    NOT NULL,
+      $columnNoteSelectedText TEXT    NOT NULL DEFAULT '',
+      $columnNoteRectList     TEXT    NOT NULL DEFAULT '',
+      $columnCreatedAt        TEXT    NOT NULL,
+      $columnUpdatedAt        TEXT    NOT NULL,
       FOREIGN KEY ($columnPdfId)
         REFERENCES $tableReadingProgress ($columnPdfId)
         ON DELETE CASCADE
@@ -145,12 +158,25 @@ abstract final class DatabaseConstants {
 
   // ---------------------------------------------------------------------------
   // Migration DDL — v5 → v6
-  // Adds annotation_type to an existing highlights table without dropping it.
-  // Existing rows default to 'highlight', preserving all saved annotations.
   // ---------------------------------------------------------------------------
 
   static const String migrateHighlightsV5ToV6 = '''
     ALTER TABLE $tableHighlights
     ADD COLUMN $columnAnnotationType TEXT NOT NULL DEFAULT 'highlight'
   ''';
+
+  // ---------------------------------------------------------------------------
+  // Migration DDL — v7 → v8  (rebuild notes table to add text-anchor columns)
+  // ---------------------------------------------------------------------------
+
+  /// Step 1: rename the old notes table out of the way.
+  static const String migrateNotesV7RenameOld =
+      'ALTER TABLE $tableNotes RENAME TO notes_v7_backup';
+
+  /// Step 2: create the new notes table (issued via [createNotesTable]).
+
+  /// Step 3: drop the backup (old page-level rows are not migrated —
+  /// they had no selectedText and are indistinguishable from bookmarks).
+  static const String migrateNotesV7DropBackup =
+      'DROP TABLE IF EXISTS notes_v7_backup';
 }
