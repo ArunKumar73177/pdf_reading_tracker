@@ -14,6 +14,9 @@ class AnnotationCommit {
   });
   final AnnotationType type;
   final int            colorValue;
+  /// Optional note text attached to this annotation.
+  /// Set post-commit via the Annotations sheet (Edit note).
+  /// The toolbar no longer provides a pre-commit note button (Issue 1 fix).
   final String?        note;
 }
 
@@ -31,6 +34,18 @@ class NoteCommit {
 // ---------------------------------------------------------------------------
 
 /// Compact floating bar shown when the user has selected text in the PDF.
+///
+/// ### Issue 1 fix — redundant note button removed
+///
+/// The in-bar "Add note / Edit note" icon button has been removed. That button
+/// let users attach a note to an annotation *before* committing it, which
+/// duplicated the "Edit note" workflow already available in the Annotations
+/// sheet after the annotation is committed. Removing it simplifies the UI and
+/// eliminates the confusion with the standalone-note FAB.
+///
+/// [AnnotationCommit.note] is kept in the data model so notes added via the
+/// Annotations sheet continue to work without any change to the persistence
+/// layer.
 ///
 /// ### Issue 6 fix — Color API compatibility
 ///
@@ -58,15 +73,11 @@ class AnnotationActionBar extends StatefulWidget {
     required this.selectedText,
     required this.onCommit,
     required this.onDismiss,
-    required this.onAddNote,
-    this.currentNote,
   });
 
   final String                         selectedText;
   final ValueChanged<AnnotationCommit> onCommit;
   final VoidCallback                   onDismiss;
-  final VoidCallback                   onAddNote;
-  final String?                        currentNote;
 
   @override
   State<AnnotationActionBar> createState() => AnnotationActionBarState();
@@ -100,7 +111,8 @@ class AnnotationActionBarState extends State<AnnotationActionBar> {
     widget.onCommit(AnnotationCommit(
       type:       _type,
       colorValue: _colorValue,
-      note:       widget.currentNote,
+      // note is intentionally null here — the user can add a note via the
+      // Annotations sheet after the annotation is committed.
     ));
   }
 
@@ -183,7 +195,11 @@ class AnnotationActionBarState extends State<AnnotationActionBar> {
 
             const SizedBox(height: 8),
 
-            // ── Color dots + note button + apply ───────────────────────
+            // ── Color dots + apply ─────────────────────────────────────
+            // Issue 1 fix: the "Add note / Edit note" icon button that
+            // previously appeared between the color dots and Apply has been
+            // removed. Notes on annotations are managed post-commit via the
+            // Annotations sheet.
             Row(
               children: [
                 ...AnnotationColors.palette.map((c) {
@@ -224,29 +240,6 @@ class AnnotationActionBarState extends State<AnnotationActionBar> {
                 }),
 
                 const Spacer(),
-
-                // Note button
-                Tooltip(
-                  message: widget.currentNote == null
-                      ? 'Add note'
-                      : 'Edit note',
-                  child: IconButton(
-                    icon: Icon(
-                      widget.currentNote == null
-                          ? Icons.note_add_outlined
-                          : Icons.note_rounded,
-                      size:  20,
-                      color: widget.currentNote == null
-                          ? cs.onSurfaceVariant
-                          : cs.primary,
-                    ),
-                    padding:     EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
-                    onPressed:   widget.onAddNote,
-                  ),
-                ),
-
-                const SizedBox(width: 8),
 
                 // Apply button
                 FilledButton(

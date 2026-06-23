@@ -1,54 +1,132 @@
 # Changelog
 
-## 2.1.0
+## 3.0.0
 
-### New Features
+### 🚀 Major Release
 
-* Added user PDF upload support using File Picker.
-* Added Continue Reading dashboard.
-* Added Recent PDFs screen.
-* Added persistent storage of user-selected PDFs.
-* Added stable PDF ID generation for user, merged, and split PDFs.
-* Added automatic resume-from-last-page support for uploaded PDFs.
-* Added jump-to-page navigation.
-* Added improved progress tracking across all PDF types.
-* Added support for bookmarks on uploaded PDFs.
-* Added support for bookmarks on merged PDFs.
-* Added support for bookmarks on split PDFs.
+This release introduces a complete migration to Syncfusion PDF Viewer and significantly expands the package from a reading-progress tracker into a full-featured PDF reader and annotation solution.
 
-### Improvements
+---
 
-* Improved PDF loading workflow.
-* Improved reading progress calculation accuracy.
-* Improved persistence of user-selected PDFs across app restarts.
-* Improved Continue Reading and Recent PDFs experience.
-* Improved SQLite data handling and PDF identification.
-* Enhanced example application with multi-PDF workflow.
+### 🔥 Major Architecture Changes
 
-### Fixes
+* Replaced ALH PDF View with Syncfusion PDF Viewer.
+* Reworked PDF rendering architecture.
+* Improved rendering reliability and maintainability.
+* Simplified dependency management by removing JitPack requirements.
+* Improved overall package structure for long-term scalability.
 
-* Fixed File Not Found issues caused by temporary File Picker cache paths.
-* Fixed reading progress never reaching 100% on the final page.
-* Fixed page 1 showing 0% progress.
-* Fixed Continue Reading not displaying newly opened PDFs.
-* Fixed Recent PDFs filtering issues.
-* Fixed progress tracking inconsistencies for merged and split PDFs.
-* Fixed bookmark persistence issues for generated PDFs.
-* Reduced lag during page jump navigation.
-* Improved PDF reopening and restoration behavior.
+---
 
-### Internal
+### ✨ Added
 
-* Added PdfPickerService.
-* Added PdfIdHelper.
-* Extended database schema to support user-selected PDFs.
-* Optimized controller initialization and persistence workflow.
-* Improved package architecture for future features such as:
+#### PDF Reading
 
-    * Text Search
-    * Text Highlighting
-    * PDF Annotation
-    * Page Extraction
-    * Page Rotation
-    * Password Protected PDFs
-    * Thumbnail Navigation
+* Reading Progress Tracking
+* Continue Reading
+* Recent PDFs Dashboard
+* Jump To Page Navigation
+* Multi-PDF Support
+* Persistent Reading Position
+
+#### User PDF Management
+
+* Import PDFs from device storage
+* Persistent PDF Library
+* Stable PDF ID generation
+* Automatic PDF restoration after app restart
+
+#### Search
+
+* Built-in PDF Text Search
+* Search Navigation
+* Search Result Highlighting
+
+#### Bookmarks
+
+* Bookmark Creation
+* Bookmark Removal
+* Bookmark Notes
+* Persistent Bookmark Storage
+
+#### Annotations
+
+* Highlight Annotations
+* Underline Annotations
+* Strikethrough Annotations
+* Squiggly Annotations
+* Annotation Persistence
+* Annotation Restoration
+
+#### Notes
+
+* Text-linked Notes
+* Edit Notes
+* Delete Notes
+* Jump To Note
+* Persistent Note Storage
+
+#### PDF Operations
+
+* PDF Merge
+* PDF Split
+* Typed Exception Handling
+
+---
+
+### ⚡ Improvements
+
+* Improved Reading Progress Tracking
+* Improved Continue Reading Experience
+* Improved Recent PDFs Workflow
+* Improved PDF Loading Performance
+* Improved Bookmark Management
+* Improved Annotation Restoration
+* Improved Database Structure
+* Improved Storage Efficiency
+* Improved Offline Persistence
+* Improved User PDF Workflow
+
+---
+
+### 🛠 Fixed
+
+* Fixed File Not Found issues caused by temporary file picker paths.
+* Fixed reading progress persistence issues.
+* Fixed bookmark restoration issues.
+* Fixed PDF reopening issues.
+* Fixed annotation restoration race conditions.
+* Fixed dialog lifecycle issues.
+* Fixed TextEditingController disposal issues.
+* Fixed duplicate PDF cache storage.
+* Fixed multiple persistence edge cases.
+
+---
+
+### 💾 Storage Optimizations
+
+* Automatic cleanup of temporary imported PDFs.
+* Reduced duplicate file storage.
+* Lightweight SQLite schema.
+* Efficient annotation storage.
+* Efficient note storage.
+
+---
+
+### 🏗 Internal
+
+* Added Highlight APIs.
+* Added Note APIs.
+* Added Search Controller.
+* Added Annotation Infrastructure.
+* Extended SQLite Schema.
+* Improved Service Architecture.
+* Improved Persistence Layer.
+
+---
+
+### Known Limitations
+
+* Reading progress currently relies on Syncfusion page-change events.
+* Dominant page detection is planned for a future release.
+* Advanced search customization may be expanded in future versions.

@@ -44,6 +44,22 @@ class DatabaseHelper {
     );
   }
 
+  /// Configures the database connection on every open.
+  ///
+  /// [_onConfigure] is the correct place for connection-level PRAGMAs that
+  /// must be set before any other operation — foreign key enforcement is the
+  /// canonical example.
+  ///
+  /// WAL mode is intentionally NOT set here. sqflite on Android routes
+  /// db.execute() through Android's SQLiteDatabase.execSQL(), which rejects
+  /// any SQL that returns a result set. PRAGMA journal_mode=WAL returns a
+  /// row ('wal'), so execSQL() throws:
+  ///   "Queries can be performed using SQLiteDatabase query or
+  ///    rawQuery methods only."
+  /// The rawQuery() workaround exists but is fragile across sqflite versions.
+  /// More importantly, WAL provides no measurable benefit here: this plugin
+  /// uses a single connection, single isolate, and a 400 ms debounced write
+  /// cadence — there is never concurrent read/write contention to resolve.
   Future<void> _onConfigure(Database db) async {
     await db.execute('PRAGMA foreign_keys = ON');
   }

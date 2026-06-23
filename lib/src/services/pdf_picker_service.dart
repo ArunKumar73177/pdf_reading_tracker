@@ -142,6 +142,33 @@ abstract final class PdfPickerService {
       // overwrite it — the user explicitly re-picked it.
       final destPath = p.join(pdfDir.path, _sanitiseFilename(originalName));
       await sourceFile.copy(destPath);
+
+      // ── Cache cleanup ─────────────────────────────────────────────────
+      // Delete the specific temp file that FilePicker wrote (Android
+      // FileProvider cache or iOS Inbox). This is the exact file we just
+      // successfully copied, so deletion is safe.
+      // Wrapped in its own try/catch — a cleanup failure must never
+      // propagate to the caller or undo the successful copy.
+      try {
+        if (await sourceFile.exists()) {
+          await sourceFile.delete();
+        }
+      } catch (_) {
+        // Non-fatal: OS may have already evicted the file, or it may live
+        // on a path we do not have delete permission for (e.g. external
+        // storage on some Android OEMs). The persistent copy is safe.
+      }
+
+      // Sweep any other orphaned FilePicker temp files from previous
+      // sessions. clearTemporaryFiles() is a no-op on platforms where
+      // FilePicker has nothing to clear, so it is always safe to call.
+      try {
+        await FilePicker.platform.clearTemporaryFiles();
+      } catch (_) {
+        // Non-fatal: same rationale as above.
+      }
+      // ─────────────────────────────────────────────────────────────────
+
       return destPath;
     } catch (e) {
       throw PdfPickerException('Failed to copy PDF to persistent storage: $e');

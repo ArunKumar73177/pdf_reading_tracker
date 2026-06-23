@@ -1,14 +1,10 @@
 # pdf_reading_tracker
 
-A complete Flutter PDF Reader and PDF Operations package.
+A production-ready Flutter PDF reader package powered by Syncfusion PDF Viewer.
 
-Render PDFs, track reading progress, manage bookmarks, upload PDFs from the device, continue reading from where users left off, merge PDFs, split PDFs, and persist everything locally using SQLite.
+Track reading progress, continue reading from where users left off, manage bookmarks, create annotations, attach text-linked notes, import PDFs from device storage, merge and split PDFs, and persist everything locally using SQLite.
 
-Built on top of:
-
-* ALH PDF View (Rendering)
-* SQLite (Persistence)
-* Syncfusion PDF (PDF Operations)
+Designed for educational, productivity, and document-centric applications.
 
 ---
 
@@ -16,53 +12,70 @@ Built on top of:
 
 ### PDF Reading
 
-* PDF rendering via ALH PDF View
-* Horizontal page navigation
-* Double-tap zoom support
-* Jump to page navigation
-* Resume from last opened page
-* Multi-PDF support
+* High-quality PDF rendering using Syncfusion PDF Viewer
+* Reading Progress Tracking
+* Continue Reading
+* Recent PDFs
+* Jump To Page
+* Multi-PDF Support
+* Double-Tap Zoom
+* Vertical and Horizontal Navigation
+* Persistent Reading Position
 
-### User PDF Management
+### Search
 
-* Pick PDFs from device storage
-* Persistent PDF library
-* Continue Reading dashboard
-* Recent PDFs section
-* Automatic PDF restoration after app restart
-
-### Reading Progress
-
-* Automatic progress tracking
-* Accurate progress percentage calculation
-* Resume from last page
-* SQLite-backed persistence
-* Works across uploaded, merged, and split PDFs
+* Built-in PDF Text Search
+* Search Navigation
+* Match Highlighting
 
 ### Bookmarks
 
-* Add bookmarks
-* Remove bookmarks
-* Bookmark persistence
-* Bookmark support for uploaded PDFs
-* Bookmark support for merged PDFs
-* Bookmark support for split PDFs
+* Add Bookmarks
+* Remove Bookmarks
+* Bookmark Notes
+* Bookmark Persistence
+* SQLite-backed Storage
+
+### Annotations
+
+* Highlight
+* Underline
+* Strikethrough
+* Squiggly
+* Annotation Persistence
+* Annotation Restoration After Restart
+
+### Notes
+
+* Text-linked Notes
+* Edit Notes
+* Delete Notes
+* Jump To Note
+* Persistent Storage
+
+### User PDF Management
+
+* Import PDFs From Device Storage
+* Persistent PDF Library
+* Continue Reading Dashboard
+* Recent PDFs Dashboard
+* Automatic Restoration After App Restart
 
 ### PDF Operations
 
-* Merge multiple PDFs
-* Split PDFs into smaller files
-* Isolate-based PDF processing
-* Typed exception handling
-* Syncfusion PDF powered operations
+* Merge Multiple PDFs
+* Split PDFs Into Smaller Documents
+* Typed Exception Handling
+* Syncfusion PDF Processing
 
-### Architecture
+### Storage
 
-* Offline-first design
-* SQLite-backed persistence
-* Service-based architecture
-* Flutter package friendly
-* Extensible for future PDF features
+* SQLite Persistence
+* Offline First
+* Lightweight Database
+* Persistent PDF Storage
+* Temporary Cache Cleanup
+* Storage Efficient Architecture
 
 ---
 
@@ -78,43 +91,7 @@ Built on top of:
 
 ```yaml
 dependencies:
-  pdf_reading_tracker: ^2.1.0
-```
-
----
-
-## Android Setup
-
-The package depends on ALH PDF View which uses JitPack internally.
-
-Add JitPack to your Android repositories.
-
-### build.gradle
-
-```groovy
-allprojects {
-    repositories {
-        google()
-        mavenCentral()
-        maven { url 'https://jitpack.io' }
-    }
-}
-```
-
-### settings.gradle.kts
-
-```kotlin
-dependencyResolutionManagement {
-    repositoriesMode.set(
-        RepositoriesMode.FAIL_ON_PROJECT_REPOS
-    )
-
-    repositories {
-        google()
-        mavenCentral()
-        maven { url = uri("https://jitpack.io") }
-    }
-}
+  pdf_reading_tracker: ^3.0.0
 ```
 
 ---
@@ -127,56 +104,48 @@ import 'package:pdf_reading_tracker/pdf_reading_tracker.dart';
 
 ---
 
-# PDF Reader Widget
-
-The easiest way to use the package.
+## Quick Start
 
 ```dart
 PdfReadingTrackerViewer(
-  pdfId: 'clean_architecture_v1',
+  pdfId: 'clean_architecture',
   pdfTitle: 'Clean Architecture',
-  assetPath: 'assets/docs/clean_architecture.pdf',
+  assetPath: 'assets/pdfs/clean_architecture.pdf',
 )
 ```
 
 ---
 
-## Advanced Reader Configuration
+## Reader Widget
 
 ```dart
 PdfReadingTrackerViewer(
-  pdfId: 'clean_architecture_v1',
-  pdfTitle: 'Clean Architecture',
-  assetPath: 'assets/docs/clean_architecture.pdf',
+  pdfId: 'flutter_notes',
+  pdfTitle: 'Flutter Notes',
+  assetPath: 'assets/pdfs/flutter_notes.pdf',
 
   showAppBar: true,
   showBottomBar: true,
   showBookmarkFab: true,
 
-  swipeHorizontal: true,
+  enableSearch: true,
+  enableHighlight: true,
+
+  swipeHorizontal: false,
   enableDoubleTap: true,
-
-  onPageChanged: (page, totalPages) {
-    print('Current page: $page');
-  },
-
-  theme: PdfViewerTheme(
-    appBarBackgroundColor: Colors.indigo,
-    appBarForegroundColor: Colors.white,
-  ),
 )
 ```
 
 ---
 
-# Progress Tracking API
+## Reading Progress API
 
-## Save Progress
+### Save Progress
 
 ```dart
 await PdfReadingTracker.saveProgress(
   ReadingProgress.create(
-    pdfId: 'pdf_001',
+    pdfId: 'flutter_notes',
     currentPage: 25,
     totalPages: 100,
     title: 'Flutter Notes',
@@ -184,65 +153,76 @@ await PdfReadingTracker.saveProgress(
 );
 ```
 
----
-
-## Get Progress
+### Get Progress
 
 ```dart
 final progress =
-    await PdfReadingTracker.getProgress('pdf_001');
+    await PdfReadingTracker.getProgress('flutter_notes');
 ```
 
----
-
-## Get All Progress
+### Get Recently Read
 
 ```dart
-final allProgress =
-    await PdfReadingTracker.getAllProgress();
+final recent =
+    await PdfReadingTracker.getRecentlyRead();
 ```
 
 ---
 
-# Bookmark API
+## Bookmark API
 
-## Add Bookmark
+### Add Bookmark
 
 ```dart
 await PdfReadingTracker.addBookmark(
   Bookmark.create(
-    pdfId: 'pdf_001',
+    pdfId: 'flutter_notes',
     page: 25,
-    note: 'Important concept',
+    note: 'Important topic',
   ),
 );
 ```
 
----
-
-## Get Bookmarks
+### Get Bookmarks
 
 ```dart
 final bookmarks =
-    await PdfReadingTracker.getBookmarks('pdf_001');
+    await PdfReadingTracker.getBookmarks('flutter_notes');
 ```
 
 ---
 
-## Remove Bookmark
+## Highlight API
 
 ```dart
-await PdfReadingTracker.removeBookmark(bookmarkId);
+final highlights =
+    await PdfReadingTracker.getHighlights('flutter_notes');
 ```
 
 ---
 
-# PDF Merge
-
-Merge multiple PDF files into a single PDF.
+## Notes API
 
 ```dart
-final mergedPdfPath =
+final notes =
+    await PdfReadingTracker.getNotes('flutter_notes');
+```
+
+---
+
+## PDF Import
+
+```dart
+final picked =
+    await PdfPickerService.pickPdf();
+```
+
+---
+
+## PDF Merge
+
+```dart
+final mergedPdf =
     await PdfMergeService.merge(
       inputPaths: [
         pdf1,
@@ -252,17 +232,9 @@ final mergedPdfPath =
     );
 ```
 
-Returns:
-
-```text
-/path/to/merged.pdf
-```
-
 ---
 
-# PDF Split
-
-Split a PDF into multiple smaller PDFs.
+## PDF Split
 
 ```dart
 final files =
@@ -272,75 +244,43 @@ final files =
     );
 ```
 
-Returns:
-
-```dart
-[
-  part1.pdf,
-  part2.pdf,
-  part3.pdf,
-]
-```
-
 ---
 
-# Error Handling
-
-```dart
-try {
-  await PdfMergeService.merge(
-    inputPaths: [pdf1, pdf2],
-  );
-} on PdfMergeException catch (e) {
-  print(e);
-}
-```
-
-```dart
-try {
-  await PdfSplitService.split(
-    pdfPath: sourcePdf,
-    pagesPerFile: 25,
-  );
-} on PdfSplitException catch (e) {
-  print(e);
-}
-```
-
----
-
-# Example Application
+## Example Application
 
 The package includes a complete example application demonstrating:
 
 * PDF Reader
-* Multiple PDFs
 * Reading Progress
-* Bookmark Persistence
+* Continue Reading
+* Recent PDFs
+* Bookmarks
+* Notes
+* Highlights
+* PDF Import
 * PDF Merge
 * PDF Split
 
 ---
 
-# Roadmap
+## Architecture
 
-Upcoming Features:
-
-* Upload User PDF
-* Recent PDFs
-* Continue Reading Dashboard
-* Jump To Page
-* Text Search
-* Text Highlighting
-* PDF Annotation
-* Extract Pages
-* Delete Pages
-* Rotate Pages
-* Password Protected PDFs
-* Thumbnail Navigation
+* Syncfusion PDF Viewer
+* Syncfusion PDF Processing
+* SQLite Persistence
+* Offline-First Design
+* Service-Based Architecture
+* Production-Ready Structure
 
 ---
 
-# License
+## Known Limitations
+
+* Reading progress currently relies on Syncfusion page-change events.
+* Dominant page detection is planned for a future release.
+
+---
+
+## License
 
 MIT License

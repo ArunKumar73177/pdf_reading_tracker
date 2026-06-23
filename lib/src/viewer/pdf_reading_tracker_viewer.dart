@@ -87,9 +87,14 @@ class _PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
   String? _resolvedFilePath;
   int _initialPage = 0;
   bool _searchVisible = false;
-
-  String? _pendingAnnotationNote;
   bool _dialogOpen = false;
+
+  // -------------------------------------------------------------------------
+  // Bug 3 fix: once the first ScrollUpdateNotification fires, scroll
+  // detection is authoritative and onPageChanged (Syncfusion top-edge
+  // heuristic) is ignored. Reset when a new document loads.
+  // -------------------------------------------------------------------------
+  bool _scrollDetectionActive = false;
 
   @override
   void initState() {
@@ -137,53 +142,19 @@ class _PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
       return;
     }
     _ctrl.commitAnnotation(textLines: textLines, commit: commit);
-    if (mounted) setState(() => _pendingAnnotationNote = null);
-  }
-
-  Future<void> _openPendingAnnotationNoteDialog() async {
-    if (_dialogOpen) return;
-    _dialogOpen = true;
-    try {
-      final result = await showSafeNoteDialog(
-        context: context,
-        title: 'Add note',
-        initialText: _pendingAnnotationNote ?? '',
-        allowDelete: _pendingAnnotationNote != null,
-      );
-      if (result == null || !mounted) return;
-      setState(() {
-        _pendingAnnotationNote = result.deleted ? null : result.text;
-      });
-    } finally {
-      _dialogOpen = false;
-    }
   }
 
   // -------------------------------------------------------------------------
   // Notes
   // -------------------------------------------------------------------------
 
-  /// Handles the "Add Note" FAB tap.
-  ///
-  /// ### Issue 1 fix — snapshot-based selection read
-  ///
-  /// When the user taps the note FAB, `SfPdfViewer` fires a deselection
-  /// event (`onTextSelectionChanged(null, null)`) before this method runs,
-  /// which would clear `_ctrl.pendingSelection`. We instead read
-  /// `_ctrl.snapshotSelection`, which is preserved through deselection
-  /// events and is only cleared after a note is saved or an annotation is
-  /// committed.
-  ///
-  /// After reading, `_ctrl.clearSnapshot()` is called inside the `finally`
-  /// block so the snapshot is consumed exactly once.
   Future<void> _handleAddNoteTap() async {
     if (_dialogOpen) return;
     _dialogOpen = true;
 
-    // Read the stable snapshot — not pendingSelection (which may be null
-    // because the viewer just fired a deselection event on FAB touch-down).
     final snapshot = _ctrl.snapshotSelection;
     final capturedText = snapshot?.selectedText ?? '';
+    final capturedPage = snapshot?.page;
     final capturedRects = snapshot?.textLines
         .map((l) => NoteRect(
       left: l.bounds.left,
@@ -210,6 +181,7 @@ class _PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
         noteText: result.text.trim(),
         selectedText: capturedText,
         rectList: capturedRects,
+        page: capturedPage,
       );
     } on Exception catch (e) {
       if (!mounted) return;
@@ -218,7 +190,6 @@ class _PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
         backgroundColor: Theme.of(context).colorScheme.error,
       ));
     } finally {
-      // Always clear the snapshot — consumed or cancelled.
       _ctrl.clearSnapshot();
       _dialogOpen = false;
     }
@@ -287,13 +258,38 @@ class _PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
     if (page != null && mounted) await _ctrl.goToPage(page);
   }
 
+  // -------------------------------------------------------------------------
+  // Jump to page
+  //
+  // Bug 1 fix: the dialog is now a proper StatefulWidget (_JumpToPageDialog)
+  // so TextEditingController and GlobalKey<FormState> are owned by that
+  // widget's State — created once in initState(), disposed once in dispose().
+  //
+  // Previously they lived inside the builder lambda which Flutter can call
+  // multiple times (keyboard animation, orientation change, hot reload).
+  // Each re-call created a new controller while the old one's listenable
+  // chain (_MergingListenable → _AnimatedState) still held a reference,
+  // triggering '_dependents.isEmpty' assertion. The finally{ctrl.dispose()}
+  // then disposed the brand-new controller immediately, causing
+  // "TextEditingController used after disposed" on the next build.
+  // -------------------------------------------------------------------------
+
   Future<void> _handleJumpToPage() async {
-    final page = await _showJumpToPageDialog(
-      context,
-      currentPage: _ctrl.currentPage,
-      totalPages: _ctrl.totalPages,
-    );
-    if (page != null && mounted) await _ctrl.goToPage(page);
+    if (_dialogOpen) return;
+    _dialogOpen = true;
+    try {
+      final page = await showDialog<int>(
+        context: context,
+        barrierDismissible: true,
+        builder: (_) => _JumpToPageDialog(
+          currentPage: _ctrl.currentPage,
+          totalPages: _ctrl.totalPages,
+        ),
+      );
+      if (page != null && mounted) await _ctrl.goToPage(page);
+    } finally {
+      _dialogOpen = false;
+    }
   }
 
   void _toggleSearch() {
@@ -352,17 +348,29 @@ class _PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
       enableDoubleTap: widget.enableDoubleTap,
       enableHighlight: widget.enableHighlight,
       sfController: _ctrl.sfController,
+      // Bug 3 fix: onPageChanged is only forwarded to the controller when
+      // scroll detection has NOT yet fired. After the first scroll event,
+      // onScrollUpdate's midpoint algorithm is the sole authority.
       onPageChanged: (n) {
-        _ctrl.onPageChanged(n);
-        widget.onPageChanged?.call(_ctrl.currentPage, _ctrl.totalPages);
+        if (!_scrollDetectionActive) {
+          _ctrl.onPageChanged(n);
+          widget.onPageChanged?.call(_ctrl.currentPage, _ctrl.totalPages);
+        }
       },
-      // Issue 3 fix: pass ScrollMetrics so the controller can use
-      // pixels + maxScrollExtent for page detection.
       onScrollUpdate: (metrics) {
+        // Mark scroll detection active on the very first scroll event.
+        if (!_scrollDetectionActive) {
+          _scrollDetectionActive = true;
+        }
         _ctrl.onScrollUpdate(metrics);
         widget.onPageChanged?.call(_ctrl.currentPage, _ctrl.totalPages);
       },
-      onDocumentLoaded: _ctrl.onDocumentLoaded,
+      onDocumentLoaded: (pageCount) {
+        // Reset scroll flag so the initial page restore via onPageChanged
+        // works correctly for the newly loaded document.
+        _scrollDetectionActive = false;
+        _ctrl.onDocumentLoaded(pageCount);
+      },
       onDocumentLoadFailed: _ctrl.onDocumentLoadFailed,
       onTextSelectionChanged: (text, region) {
         if (_dialogOpen) return;
@@ -445,13 +453,6 @@ class _PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
           listenable: _ctrl.highlightNotifier,
           builder: (context, __) {
             final pending = _ctrl.pendingSelection;
-
-            if (pending == null && _pendingAnnotationNote != null) {
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                if (mounted) setState(() => _pendingAnnotationNote = null);
-              });
-            }
-
             return Positioned(
               bottom: 72,
               left: 12,
@@ -460,16 +461,11 @@ class _PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
                   ? AnnotationActionBar(
                 key: const ValueKey('annotation_action_bar'),
                 selectedText: pending.selectedText,
-                currentNote: _pendingAnnotationNote,
                 onCommit: _commitAnnotation,
                 onDismiss: () {
-                  if (mounted) {
-                    setState(() => _pendingAnnotationNote = null);
-                  }
                   _ctrl.captureTextSelection(null, null, null);
                   _ctrl.clearSnapshot();
                 },
-                onAddNote: _openPendingAnnotationNoteDialog,
               )
                   : const SizedBox.shrink(),
             );
@@ -497,7 +493,106 @@ class _PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
 }
 
 // ---------------------------------------------------------------------------
-// AppBar with collapsible search
+// _JumpToPageDialog
+//
+// Bug 1 fix: StatefulWidget so TextEditingController + GlobalKey<FormState>
+// live in State (created once, disposed once). Previously these were inside
+// the builder lambda → re-created on every rebuild → use-after-dispose crash.
+// ---------------------------------------------------------------------------
+
+class _JumpToPageDialog extends StatefulWidget {
+  const _JumpToPageDialog({
+    required this.currentPage,
+    required this.totalPages,
+  });
+
+  final int currentPage;
+  final int totalPages;
+
+  @override
+  State<_JumpToPageDialog> createState() => _JumpToPageDialogState();
+}
+
+class _JumpToPageDialogState extends State<_JumpToPageDialog> {
+  late final TextEditingController _textCtrl;
+
+  // GlobalKey created once here — never re-created on rebuild.
+  // Previously it was inside the builder lambda, causing duplicate key errors.
+  final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
+
+  @override
+  void initState() {
+    super.initState();
+    _textCtrl = TextEditingController(text: '${widget.currentPage + 1}');
+  }
+
+  @override
+  void dispose() {
+    // Called exactly once when dialog is removed from tree. Never while
+    // TextFormField still has a reference to the controller.
+    _textCtrl.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    if (!mounted) return;
+    if (_formKey.currentState?.validate() ?? false) {
+      Navigator.of(context).pop(int.parse(_textCtrl.text.trim()) - 1);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final totalPages = widget.totalPages;
+
+    // Edge case: document not yet loaded.
+    if (totalPages <= 0) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) Navigator.of(context).pop();
+      });
+      return const SizedBox.shrink();
+    }
+
+    return AlertDialog(
+      title: const Text('Jump to page'),
+      content: Form(
+        key: _formKey,
+        child: TextFormField(
+          controller: _textCtrl,
+          keyboardType: TextInputType.number,
+          autofocus: true,
+          textInputAction: TextInputAction.go,
+          decoration: InputDecoration(
+            labelText: 'Page number',
+            hintText: '1 – $totalPages',
+            border: const OutlineInputBorder(),
+            suffixText: '/ $totalPages',
+          ),
+          validator: (v) {
+            final n = int.tryParse(v?.trim() ?? '');
+            if (n == null) return 'Enter a number';
+            if (n < 1 || n > totalPages) return '1 – $totalPages';
+            return null;
+          },
+          onFieldSubmitted: (_) => _submit(),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: _submit,
+          child: const Text('Go'),
+        ),
+      ],
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// AppBar with collapsible search (unchanged)
 // ---------------------------------------------------------------------------
 
 class _AppBarWithSearch extends StatelessWidget {
@@ -598,7 +693,7 @@ class _AppBarWithSearch extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
-// _PdfViewerCore
+// _PdfViewerCore (unchanged except onDocumentLoaded signature)
 // ---------------------------------------------------------------------------
 
 class _PdfViewerCore extends StatelessWidget {
@@ -626,11 +721,7 @@ class _PdfViewerCore extends StatelessWidget {
   final bool enableHighlight;
   final sf.PdfViewerController sfController;
   final void Function(int) onPageChanged;
-
-  /// Issue 3 fix: receives [ScrollMetrics] so the controller can use
-  /// `pixels` and `maxScrollExtent` for scroll-extent-based page detection.
   final void Function(ScrollMetrics metrics) onScrollUpdate;
-
   final void Function(int) onDocumentLoaded;
   final void Function(String) onDocumentLoadFailed;
   final void Function(String?, Rect?) onTextSelectionChanged;
@@ -666,9 +757,6 @@ class _PdfViewerCore extends StatelessWidget {
           : null,
     );
 
-    // Issue 3 fix: pass ScrollMetrics to onScrollUpdate.
-    // We use ScrollUpdateNotification so we get metrics on every scroll frame.
-    // `return false` — do not absorb; let SfPdfViewer handle the scroll.
     return NotificationListener<ScrollUpdateNotification>(
       onNotification: (notification) {
         onScrollUpdate(notification.metrics);
@@ -680,70 +768,7 @@ class _PdfViewerCore extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
-// Jump-to-page dialog
-// ---------------------------------------------------------------------------
-
-Future<int?> _showJumpToPageDialog(
-    BuildContext context, {
-      required int currentPage,
-      required int totalPages,
-    }) async {
-  if (totalPages <= 0) return null;
-  final ctrl = TextEditingController(text: '${currentPage + 1}');
-  final formKey = GlobalKey<FormState>();
-  try {
-    return await showDialog<int>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Jump to page'),
-        content: Form(
-          key: formKey,
-          child: TextFormField(
-            controller: ctrl,
-            keyboardType: TextInputType.number,
-            autofocus: true,
-            decoration: InputDecoration(
-              labelText: 'Page number',
-              hintText: '1 – $totalPages',
-              border: const OutlineInputBorder(),
-              suffixText: '/ $totalPages',
-            ),
-            validator: (v) {
-              final n = int.tryParse(v?.trim() ?? '');
-              if (n == null) return 'Enter a number';
-              if (n < 1 || n > totalPages) return '1 – $totalPages';
-              return null;
-            },
-            onFieldSubmitted: (_) {
-              if (formKey.currentState!.validate()) {
-                Navigator.of(ctx).pop(int.parse(ctrl.text.trim()) - 1);
-              }
-            },
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () {
-              if (formKey.currentState!.validate()) {
-                Navigator.of(ctx).pop(int.parse(ctrl.text.trim()) - 1);
-              }
-            },
-            child: const Text('Go'),
-          ),
-        ],
-      ),
-    );
-  } finally {
-    ctrl.dispose();
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Error view
+// Error view (unchanged)
 // ---------------------------------------------------------------------------
 
 class _ErrorView extends StatelessWidget {

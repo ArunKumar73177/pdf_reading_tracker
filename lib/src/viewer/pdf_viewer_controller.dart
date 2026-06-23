@@ -19,13 +19,9 @@ import 'pdf_search_controller.dart';
 import 'widgets/annotation_action_bar.dart';
 
 // ---------------------------------------------------------------------------
-// Note annotation color
+// Note annotation color — teal at 55 % opacity
 // ---------------------------------------------------------------------------
 
-/// ARGB color used for the in-PDF highlight that marks text with an attached
-/// note. Distinct from all user-selectable annotation colors.
-///
-/// Teal at 55 % opacity.
 const int _kNoteAnnotationColor = 0x8C00BCD4;
 
 // ---------------------------------------------------------------------------
@@ -34,75 +30,24 @@ const int _kNoteAnnotationColor = 0x8C00BCD4;
 
 /// Source of truth for [PdfReadingTrackerViewer].
 ///
-/// ---
-/// ## Issue 1 fix — text-anchor snapshot for notes
+/// ### Bug 3 fix — onPageChanged demoted to fallback
 ///
-/// ### Problem
-/// When the user selects text and then taps the "Add Note" FAB,
-/// `SfPdfViewer` fires `onTextSelectionChanged(null, null)` the moment the
-/// FAB receives focus (touch-up lands outside the viewer). This clears
-/// `_pendingSelection` before `_handleAddNoteTap` reads it, so every note
-/// is saved with `selectedText=''` and an empty `rectList`.
+/// Syncfusion's `onPageChanged` fires based on the **top edge** of the
+/// visible area: whichever page's top is closest to the viewport top is
+/// reported as the current page. This is wrong when two pages are visible
+/// and the lower page occupies most of the screen.
 ///
-/// ### Fix
-/// A **snapshot** of the pending selection (`_selectionSnapshot`) is taken
-/// every time `captureTextSelection` receives a non-empty selection and
-/// stored in a separate field. The snapshot is cleared only when the user
-/// explicitly commits or dismisses the annotation bar, or when a new note
-/// is saved — not when the viewer fires a deselection event.
+/// The fix is split across two files:
 ///
-/// `_handleAddNoteTap` in the viewer reads `snapshotSelection` (not
-/// `pendingSelection`) so it always gets the last intentional selection.
+/// 1. `pdf_reading_tracker_viewer.dart` — a `_scrollDetectionActive` flag
+///    gates calls to [onPageChanged]. Once the first
+///    [ScrollUpdateNotification] fires, [onPageChanged] is no longer
+///    forwarded here; [onScrollUpdate]'s midpoint algorithm is authoritative.
 ///
-/// ---
-/// ## Issue 3 fix — scroll-extent-based page detection
-///
-/// ### Problem
-/// The previous implementation called `sfController.getPageOffset(n)` which
-/// does NOT exist in `syncfusion_flutter_pdfviewer` 27.x. An `extension`
-/// stub silently replaced it with a no-op returning null, so the midpoint
-/// algorithm never ran and page detection fell back to
-/// `sfController.pageNumber` (top-edge heuristic).
-///
-/// ### Fix
-/// `onScrollUpdate` now takes a [ScrollMetrics] argument (passed from the
-/// `NotificationListener` in `_PdfViewerCore`). From `ScrollMetrics`:
-///
-/// - `pixels`          — current scroll offset (same as the old `scrollOffset.dy`)
-/// - `maxScrollExtent` — total scrollable height of the document
-///
-/// Assuming all pages have equal height (Syncfusion continuous-scroll
-/// renders each page at the same zoom level, so equal height is true at any
-/// given zoom), the position of page N's top edge is:
-///
-///   `pageTop(n) = (n - 1) * pageHeight`   where n is 1-based
-///   `pageHeight = maxScrollExtent / (totalPages - 1)`   (last page top = maxScrollExtent)
-///
-/// If `totalPages == 1`, we are always on page 1.
-///
-/// The dominant page is the one where `pixels` falls between `pageTop(n)`
-/// and `pageTop(n+1)`. Among the two candidates (current and next),
-/// the dominant page is the one whose top is closest to the *midpoint* of
-/// the visible viewport. Because we do not know viewport height from
-/// `ScrollMetrics` alone (it is `viewportDimension`), the simpler and
-/// equally correct criterion is:
-///
-///   if `pixels >= (pageTop(candidate) + pageTop(candidate+1)) / 2`
-///       → next page is dominant
-///
-/// This is mathematically identical to: next page occupies > 50 % of the
-/// viewport top half, which is the desired UX.
-///
-/// ### Syncfusion APIs used (documented in 27.x)
-/// - `PdfViewerController.pageNumber`   → int (1-based, top-edge)
-/// - `PdfViewerController.jumpToPage()` → void
-/// - `PdfViewerController.addAnnotation()`
-/// - `PdfViewerController.removeAnnotation()`
-/// - `PdfViewerController.getAnnotations()`
-/// - `PdfViewerController.clearSelection()`
-/// - `PdfViewerController.searchText()`
-/// - `ScrollMetrics.pixels`             → double
-/// - `ScrollMetrics.maxScrollExtent`    → double
+/// 2. This file — [goToPage] installs a 1.5 s timeout to auto-clear
+///    `_pendingJumpTarget`. Without the timeout, a rendering delay or scroll
+///    overshoot could leave the guard set indefinitely, silently swallowing
+///    all subsequent [onScrollUpdate] page detections.
 class PdfViewerController extends ChangeNotifier {
   PdfViewerController({
     required this.pdfId,
@@ -171,11 +116,8 @@ class PdfViewerController extends ChangeNotifier {
   int get totalPages => _totalPages;
 
   double _progressPct = 0.0;
-
   double get progressPct => _progressPct;
 
-  /// Recomputes and caches [progressPct]. Call whenever [_currentPage] or
-  /// [_totalPages] changes.
   void _updateProgressPct() {
     _progressPct = _totalPages <= 0
         ? 0.0
@@ -200,19 +142,15 @@ class PdfViewerController extends ChangeNotifier {
 
   int _noteCountCachedPage = -1;
   int _noteCountOnCurrentPage = 0;
-
-  /// Number of notes whose [Note.page] matches [currentPage]. O(1) read.
   int get noteCountOnCurrentPage => _noteCountOnCurrentPage;
 
   void _updateNoteCountCache() {
-    // Early exit: re-scan only when the page actually changes.
     if (_noteCountCachedPage == _currentPage) return;
     _noteCountCachedPage = _currentPage;
     _noteCountOnCurrentPage =
         _notes.where((n) => n.page == _currentPage).length;
   }
 
-  /// Invalidates the note count cache (call after notes list mutates).
   void _invalidateNoteCountCache() {
     _noteCountCachedPage = -1;
     _updateNoteCountCache();
@@ -220,31 +158,14 @@ class PdfViewerController extends ChangeNotifier {
 
   // -------------------------------------------------------------------------
   // Text selection — live pending + stable snapshot
-  //
-  // _pendingSelection  : live, cleared whenever SfPdfViewer fires a
-  //                      deselection event (onTextSelectionChanged(null)).
-  //                      Drives the AnnotationActionBar visibility.
-  //
-  // _selectionSnapshot : stable, set whenever a non-empty selection is
-  //                      captured; cleared only when the user explicitly
-  //                      commits or dismisses the bar, or after a note is
-  //                      saved. Never cleared by a viewer deselection event.
-  //                      Read by _handleAddNoteTap via snapshotSelection.
   // -------------------------------------------------------------------------
 
   PendingTextSelection? _pendingSelection;
   PendingTextSelection? get pendingSelection => _pendingSelection;
 
   PendingTextSelection? _selectionSnapshot;
-
-  /// The most-recent intentional text selection. Survives the viewer's
-  /// deselection event that fires when the user taps the note FAB.
-  ///
-  /// The viewer reads this in `_handleAddNoteTap` instead of
-  /// `pendingSelection`.
   PendingTextSelection? get snapshotSelection => _selectionSnapshot;
 
-  /// Clears the snapshot after the note dialog has consumed it.
   void clearSnapshot() {
     _selectionSnapshot = null;
   }
@@ -262,8 +183,6 @@ class PdfViewerController extends ChangeNotifier {
   // Scroll-extent page detection
   // -------------------------------------------------------------------------
 
-  /// Updated on every [ScrollUpdateNotification] from [onScrollUpdate].
-  /// Used to compute page height for the midpoint algorithm.
   double _lastMaxScrollExtent = 0.0;
 
   // -------------------------------------------------------------------------
@@ -336,7 +255,6 @@ class PdfViewerController extends ChangeNotifier {
       _progressDebounce!.cancel();
       _persistProgressImmediate();
     }
-    // Note: _progressDebounce is already cancelled above; no second cancel needed.
     searchController.dispose();
     pageNotifier.dispose();
     bookmarksNotifier.dispose();
@@ -351,10 +269,14 @@ class PdfViewerController extends ChangeNotifier {
   // Syncfusion document callbacks
   // -------------------------------------------------------------------------
 
-  /// Fallback page update from Syncfusion's `onPageChanged`. Used when the
-  /// scroll-based detection has not yet fired (e.g. initial load or after a
-  /// programmatic jump). The `_updateCurrentPage` guard prevents double
-  /// notifications if scroll detection already updated the page.
+  /// Fallback page update from Syncfusion's `onPageChanged` (top-edge).
+  ///
+  /// ### Bug 3 fix
+  /// The viewer layer gates calls to this method behind
+  /// `!_scrollDetectionActive`. It is only called before the first scroll
+  /// event fires — i.e., for the initial page restore after document load.
+  /// Once the user scrolls, [onScrollUpdate]'s midpoint algorithm is the
+  /// sole authority and this method is never forwarded from the viewer.
   void onPageChanged(int newPageNumber) {
     if (_disposed) return;
     _updateCurrentPage(newPageNumber - 1, source: 'onPageChanged');
@@ -362,27 +284,14 @@ class PdfViewerController extends ChangeNotifier {
 
   /// Called by [NotificationListener<ScrollUpdateNotification>] in the viewer.
   ///
-  /// ### Scroll-extent-based page detection algorithm
+  /// Computes the dominant visible page using the viewport midpoint:
   ///
-  /// Uses the viewport center (pixels + viewportDimension/2) to determine
-  /// which page occupies the largest fraction of visible area.
+  ///   pageH          = maxScrollExtent / (totalPages − 1)
+  ///   viewportCenter = pixels + viewportDimension / 2
+  ///   dominant       = floor(viewportCenter / pageH) + 1   [clamped]
   ///
-  /// Let:
-  ///   `H = maxScrollExtent / max(totalPages - 1, 1)` — estimated height per
-  ///        page (equal-height approximation; best available without page-level
-  ///        layout data from Syncfusion).
-  ///
-  ///   `viewportCenter = pixels + viewportDimension / 2`
-  ///
-  ///   `pageTop(n) = (n - 1) * H`   where n is 1-based.
-  ///
-  /// The dominant page is the one whose top is closest to (but below)
-  /// `viewportCenter`.
-  ///
-  ///   `dominant = floor(viewportCenter / H) + 1`   clamped to [1, totalPages].
-  ///
-  /// This is more accurate than comparing `pixels` against a midpoint because
-  /// it uses the actual screen center, not just the scroll offset.
+  /// The page occupying the largest visible fraction is always the one whose
+  /// top is closest to (and below) the viewport center.
   void onScrollUpdate(ScrollMetrics metrics) {
     if (_disposed) return;
     if (!_hasRendered) return;
@@ -396,7 +305,6 @@ class PdfViewerController extends ChangeNotifier {
     }
 
     if (_lastMaxScrollExtent <= 0) {
-      // Document not yet fully laid out — fall back to Syncfusion's heuristic.
       final candidate = sfController.pageNumber;
       if (candidate >= 1) {
         _updateCurrentPage(candidate - 1, source: 'onScrollUpdate:fallback');
@@ -404,14 +312,9 @@ class PdfViewerController extends ChangeNotifier {
       return;
     }
 
-    // Estimated page height (equal-height assumption).
     final pageH = _lastMaxScrollExtent / (_totalPages - 1).toDouble();
-
-    // Use the viewport center so the dominant page is the one most visible.
     final viewportCenter =
         metrics.pixels + (metrics.viewportDimension / 2.0);
-
-    // 1-based dominant page.
     final dominant =
         (viewportCenter / pageH).floor().clamp(0, _totalPages - 1) + 1;
 
@@ -428,15 +331,11 @@ class PdfViewerController extends ChangeNotifier {
   }
 
   /// Unified page-update path.
-  void _updateCurrentPage(int zeroBasedPage,
-      {required String source}) {
-    // While a programmatic jump is in flight, only accept the exact target
-    // page — but do NOT swallow other pages indefinitely. The guard is
-    // cleared as soon as the target arrives.
+  void _updateCurrentPage(int zeroBasedPage, {required String source}) {
     if (_pendingJumpTarget != null && zeroBasedPage != _pendingJumpTarget) {
       return;
     }
-    _pendingJumpTarget = null; // clear regardless of match
+    _pendingJumpTarget = null;
     if (zeroBasedPage == _currentPage) return;
     _currentPage = zeroBasedPage;
     _updateProgressPct();
@@ -458,9 +357,6 @@ class PdfViewerController extends ChangeNotifier {
 
     if (!_hasRendered) {
       _hasRendered = true;
-      // Sequential restores avoid concurrent sfController.addAnnotation() calls
-      // that can corrupt the annotation list when both async chains resolve in
-      // the same event-loop turn.
       _reloadBookmarks().then((_) {
         if (_disposed) return;
         _reloadNotesAndRestoreAnnotations().then((_) {
@@ -482,16 +378,6 @@ class PdfViewerController extends ChangeNotifier {
   // Text selection capture
   // -------------------------------------------------------------------------
 
-  /// Called whenever Syncfusion fires `onTextSelectionChanged`.
-  ///
-  /// When [selectedText] is non-empty:
-  ///   - Updates `_pendingSelection` (drives the action bar).
-  ///   - Updates `_selectionSnapshot` (survives subsequent deselect events).
-  ///
-  /// When [selectedText] is null/empty:
-  ///   - Clears `_pendingSelection` only.
-  ///   - Does NOT touch `_selectionSnapshot` — the snapshot is preserved so
-  ///     the note FAB can read it even after the viewer fires a deselect.
   void captureTextSelection(
       String? selectedText,
       Rect? globalRegion,
@@ -508,27 +394,29 @@ class PdfViewerController extends ChangeNotifier {
       return;
     }
 
+    final selectionPage = (textLines != null && textLines.isNotEmpty)
+        ? textLines.first.pageNumber - 1
+        : _currentPage;
+
     final sel = PendingTextSelection(
       selectedText: selectedText,
       globalRegion: globalRegion,
-      page: _currentPage,
+      page: selectionPage,
       textLines: textLines ?? const [],
     );
     _pendingSelection = sel;
-    _selectionSnapshot = sel; // stable copy for note FAB
+    _selectionSnapshot = sel;
     highlightNotifier.notifyListeners();
   }
 
   void clearPdfSelection() {
     try {
       sfController.clearSelection();
-    } catch (_) {
-      // No active selection or controller not yet attached — safe to ignore.
-    }
+    } catch (_) {}
   }
 
   // -------------------------------------------------------------------------
-  // Annotation: commit (highlight / underline / strikethrough / squiggly)
+  // Annotation: commit
   // -------------------------------------------------------------------------
 
   Future<void> commitAnnotation({
@@ -537,7 +425,7 @@ class PdfViewerController extends ChangeNotifier {
   }) async {
     final pending = _pendingSelection;
     _pendingSelection = null;
-    _selectionSnapshot = null; // committed — clear snapshot too
+    _selectionSnapshot = null;
 
     if (textLines.isEmpty) {
       _log('commitAnnotation: empty textLines — skipping');
@@ -630,7 +518,6 @@ class PdfViewerController extends ChangeNotifier {
 
   void _removeSfHighlightAnnotation(Highlight highlight) {
     final sfPage = highlight.page + 1;
-    // Single getAnnotations() call — avoid redundant copies per removal.
     final allAnnotations = sfController.getAnnotations();
 
     final sameTypeOnPage = _highlights
@@ -641,7 +528,8 @@ class PdfViewerController extends ChangeNotifier {
     final relativeIdx =
     sameTypeOnPage.indexWhere((h) => h.id == highlight.id);
 
-    final sfOnPage = _sfAnnotationsOfType(highlight.annotationType, allAnnotations)
+    final sfOnPage =
+    _sfAnnotationsOfType(highlight.annotationType, allAnnotations)
         .where((a) => a.pageNumber == sfPage)
         .toList(growable: false);
 
@@ -669,7 +557,9 @@ class PdfViewerController extends ChangeNotifier {
       case AnnotationType.underline:
         return allAnnotations.whereType<sf.UnderlineAnnotation>().toList();
       case AnnotationType.strikethrough:
-        return allAnnotations.whereType<sf.StrikethroughAnnotation>().toList();
+        return allAnnotations
+            .whereType<sf.StrikethroughAnnotation>()
+            .toList();
       case AnnotationType.squiggly:
         return allAnnotations.whereType<sf.SquigglyAnnotation>().toList();
     }
@@ -749,8 +639,6 @@ class PdfViewerController extends ChangeNotifier {
     _log('Note annotations restored: $restoredCount');
   }
 
-  /// Adds the teal note-marker annotation to Syncfusion for a single note.
-  /// Returns true if an annotation was added, false if skipped.
   bool _addNoteAnnotationToViewer(Note note) {
     if (note.rectList.isEmpty) return false;
     try {
@@ -778,7 +666,6 @@ class PdfViewerController extends ChangeNotifier {
     final sfPage = note.page + 1;
     final noteColor = const Color(_kNoteAnnotationColor);
 
-    // Single getAnnotations() call.
     final allAnnotations = sfController.getAnnotations();
     final tealOnPage = allAnnotations
         .whereType<sf.HighlightAnnotation>()
@@ -873,19 +760,19 @@ class PdfViewerController extends ChangeNotifier {
   }
 
   // -------------------------------------------------------------------------
-  // Notes operations — text-anchored
+  // Notes operations
   // -------------------------------------------------------------------------
 
-  /// Saves a new text-anchored note and adds its in-PDF teal highlight
-  /// annotation when [rectList] is non-empty.
   Future<Note> addNote({
     required String noteText,
     String selectedText = '',
     List<NoteRect> rectList = const [],
+    int? page,
   }) async {
+    final notePage = page ?? _currentPage;
     final note = Note.create(
       pdfId: pdfId,
-      page: _currentPage,
+      page: notePage,
       noteText: noteText,
       selectedText: selectedText,
       rectList: rectList,
@@ -901,14 +788,14 @@ class PdfViewerController extends ChangeNotifier {
         return b.updatedAt.compareTo(a.updatedAt);
       });
       _notes = updated;
-      _invalidateNoteCountCache(); // full cache invalidation after list mutation
+      _invalidateNoteCountCache();
 
       if (_hasRendered) _addNoteAnnotationToViewer(stored);
 
       notesNotifier.notifyListeners();
     }
 
-    _log('Note added rowId=$rowId page=$_currentPage '
+    _log('Note added rowId=$rowId page=$notePage '
         'anchor="${selectedText.length > 20 ? selectedText.substring(0, 20) : selectedText}" '
         'rects=${rectList.length}');
     return stored;
@@ -938,23 +825,44 @@ class PdfViewerController extends ChangeNotifier {
     await NoteService.instance.removeNote(id);
     if (_disposed) return;
     _notes = _notes.where((n) => n.id != id).toList(growable: false);
-    _invalidateNoteCountCache(); // invalidate after list mutation
+    _invalidateNoteCountCache();
     notesNotifier.notifyListeners();
     _log('Note removed id=$id');
   }
 
   // -------------------------------------------------------------------------
   // Navigation
+  //
+  // Bug 3 fix: auto-clear _pendingJumpTarget after 1.5 s.
+  //
+  // _pendingJumpTarget guards _updateCurrentPage: while it is set, only the
+  // exact target page is accepted and all other scroll updates are swallowed.
+  // This is correct during the brief window after jumpToPage() while
+  // Syncfusion is animating to the target. However, if a rendering delay or
+  // scroll overshoot prevents the exact target page from arriving via
+  // onScrollUpdate, _pendingJumpTarget would stay set indefinitely, blocking
+  // all future page detection.
+  //
+  // The 1.5 s timeout guarantees the guard is cleared regardless of what
+  // Syncfusion reports.
   // -------------------------------------------------------------------------
 
   Future<void> goToPage(int page) async {
     if (!_hasRendered) return;
     if (page == _currentPage) return;
     _currentPage = page;
+    _updateProgressPct();
     _updateNoteCountCache();
     pageNotifier.notifyListeners();
     _pendingJumpTarget = page;
     sfController.jumpToPage(page + 1);
+
+    // Bug 3 fix: bounded guard — never blocks scroll detection indefinitely.
+    Future.delayed(const Duration(milliseconds: 1500), () {
+      if (!_disposed && _pendingJumpTarget == page) {
+        _pendingJumpTarget = null;
+      }
+    });
   }
 
   // -------------------------------------------------------------------------
@@ -1012,17 +920,23 @@ class PdfViewerController extends ChangeNotifier {
   }
 
   void _persistProgressImmediate() {
+    final savedPdfId = pdfId;
+    final savedPage = _currentPage;
+    final savedTotalPages = _totalPages;
+    final savedTitle = pdfTitle;
+    final savedFilePath = onDeviceFilePath;
+
     ProgressService.instance
         .saveProgress(ReadingProgress.create(
-      pdfId: pdfId,
-      currentPage: _currentPage,
-      totalPages: _totalPages,
-      title: pdfTitle,
-      filePath: onDeviceFilePath,
+      pdfId: savedPdfId,
+      currentPage: savedPage,
+      totalPages: savedTotalPages,
+      title: savedTitle,
+      filePath: savedFilePath,
     ))
         .then((_) {})
         .catchError((Object e) {
-      _log('Dispose-time save failed: $e');
+      debugPrint('[PdfViewerCtrl:$savedPdfId] Dispose-time save failed: $e');
     });
   }
 
@@ -1060,6 +974,9 @@ class PendingTextSelection {
 
   final String selectedText;
   final Rect? globalRegion;
+
+  /// Zero-based page derived from [textLines.first.pageNumber] — authoritative.
   final int page;
+
   final List<sf.PdfTextLine> textLines;
 }

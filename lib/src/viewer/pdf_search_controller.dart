@@ -1,13 +1,10 @@
 import 'package:flutter/foundation.dart';
-import 'package:syncfusion_flutter_pdf/pdf.dart' as sfpdf;
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart' as sf;
 
 // ---------------------------------------------------------------------------
-// Internal notifier — exposes notifyListeners() publicly.
-// ChangeNotifier.notifyListeners() is @protected, so a plain ChangeNotifier
-// field cannot call it from outside the class hierarchy. This private
-// subclass wraps it safely.
+// Internal notifier
 // ---------------------------------------------------------------------------
+
 class _PublicNotifier extends ChangeNotifier {
   void notify() => notifyListeners();
 }
@@ -15,23 +12,30 @@ class _PublicNotifier extends ChangeNotifier {
 /// Encapsulates all PDF text-search state and drives Syncfusion's native
 /// search mechanism via [sf.PdfViewerController].
 ///
-/// ### Usage
-/// ```dart
-/// searchController.search('flutter');  // synchronous in Syncfusion 27.x
-/// searchController.nextResult();
-/// searchController.previousResult();
-/// searchController.clearSearch();
-/// ```
+/// ### Case-insensitive search — how it works
 ///
-/// ### Syncfusion 27.x API facts (confirmed from source)
-/// - `PdfViewerController.searchText()` returns [sf.PdfTextSearchResult]
-///   **synchronously** — it is NOT a Future.
-/// - The search-option enum is [sfpdf.TextSearchOption], defined in
-///   `syncfusion_flutter_pdf` (already a direct dependency), exported via
-///   `package:syncfusion_flutter_pdf/pdf.dart`.
-/// - [sf.PdfTextSearchResult] is a [ChangeNotifier] that fires whenever
-///   Syncfusion updates `totalInstanceCount` (incremental page scan) or
-///   `currentInstanceIndex` (next/prev navigation).
+/// `SfPdfViewer.searchText()` delegates internally to
+/// `PdfTextExtractor.findText()`. When `searchOption` is **null** (omitted),
+/// the extractor uses `pageText.toLowerCase().contains(term.toLowerCase())`
+/// — i.e. plain case-insensitive substring matching.
+///
+/// The available `TextSearchOption` values in Syncfusion 27.x are:
+///
+/// | Value                            | Behaviour                            |
+/// |----------------------------------|--------------------------------------|
+/// | `null` (omitted) ← **we use this** | Case-insensitive substring match  |
+/// | `TextSearchOption.caseSensitive` | Exact-case match only                |
+/// | `TextSearchOption.wholeWords`    | Whole words, case-insensitive        |
+/// | `TextSearchOption.both`          | Whole words + case-sensitive         |
+///
+/// `TextSearchOption.none` does **not** exist in 27.x and must never be used.
+///
+/// ### Previous bug
+///
+/// An earlier version imported `syncfusion_flutter_pdf` and passed
+/// `sfpdf.TextSearchOption.none` — a value that does not exist in the enum,
+/// causing a compile error. The fix is to omit `searchOption` entirely,
+/// which is both the correct and the simplest solution.
 class PdfSearchController {
   PdfSearchController({required sf.PdfViewerController sfController})
       : _sfController = sfController;
@@ -45,7 +49,6 @@ class PdfSearchController {
   final _PublicNotifier _notifier = _PublicNotifier();
 
   /// Listen to this to rebuild search-related UI only.
-  /// Never fires during normal page swipes.
   ChangeNotifier get notifier => _notifier;
 
   // ---------------------------------------------------------------------------
@@ -62,17 +65,12 @@ class PdfSearchController {
   /// The text currently being searched. Empty when no search is active.
   String get query => _query;
 
-  /// `true` briefly while the internal state is being set up.
-  /// (Syncfusion 27.x searchText() is synchronous so this is only true
-  /// for the duration of the call itself.)
   bool _isSearching = false;
   bool get isSearching => _isSearching;
 
-  /// Whether a search is active.
   bool get hasActiveSearch => _query.isNotEmpty;
 
-  /// Total matches found by the current search.
-  /// Grows incrementally as Syncfusion scans the document page by page.
+  /// Total matches found so far (grows incrementally as Syncfusion scans).
   int get totalCount => _result?.totalInstanceCount ?? 0;
 
   /// 1-based index of the currently highlighted match.
@@ -82,11 +80,15 @@ class PdfSearchController {
   // Public API
   // ---------------------------------------------------------------------------
 
-  /// Initiates a new search for [query].
+  /// Initiates a case-insensitive search for [query].
   ///
-  /// Calls `PdfViewerController.searchText()` which is **synchronous** in
-  /// Syncfusion 27.x and returns a live [sf.PdfTextSearchResult] immediately.
-  /// The result notifies listeners as the background isolate scans more pages.
+  /// Passing no `searchOption` (null) to [sf.PdfViewerController.searchText]
+  /// triggers the case-insensitive substring path inside Syncfusion's
+  /// `PdfTextExtractor`. This means "flutter", "Flutter", "FLUTTER", and
+  /// "ArChItEcTuRe" all produce identical result sets.
+  ///
+  /// Do **not** pass `TextSearchOption.caseSensitive` (exact case only) or
+  /// the non-existent `TextSearchOption.none` (compile error).
   void search(String query) {
     final trimmed = query.trim();
     if (trimmed.isEmpty) {
@@ -96,20 +98,17 @@ class PdfSearchController {
     if (trimmed == _query && _result != null) return;
 
     _clearResult();
-    _query       = trimmed;
+    _query = trimmed;
     _isSearching = true;
     _notifier.notify();
 
-    // Synchronous — returns immediately with a live result object.
-    final result = _sfController.searchText(
-      trimmed,
-      searchOption: sfpdf.TextSearchOption.caseSensitive,
-    );
+    // Omitting searchOption (null) = case-insensitive substring search.
+    // This is the correct, version-safe approach for Syncfusion 27.x.
+    final result = _sfController.searchText(trimmed);
 
-    _result      = result;
+    _result = result;
     _isSearching = false;
 
-    // Listen for incremental totalInstanceCount updates and next/prev changes.
     _result!.addListener(_onResultChanged);
     _notifier.notify();
   }
@@ -118,7 +117,6 @@ class PdfSearchController {
   void nextResult() {
     if (_result == null || totalCount == 0) return;
     _result!.nextInstance();
-    // _onResultChanged fires → _notifier.notify() propagates the index update.
   }
 
   /// Navigates to the previous search result.
@@ -130,7 +128,7 @@ class PdfSearchController {
   /// Clears the active search and removes all Syncfusion highlights.
   void clearSearch() {
     _clearResult();
-    _query       = '';
+    _query = '';
     _isSearching = false;
     _notifier.notify();
   }
@@ -148,7 +146,6 @@ class PdfSearchController {
   }
 
   void _onResultChanged() {
-    // Fires on every incremental scan update and on next/prev navigation.
     _notifier.notify();
   }
 
