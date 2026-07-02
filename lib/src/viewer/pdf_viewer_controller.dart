@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:syncfusion_flutter_pdf/pdf.dart' as sf;
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart' as sf;
 
 import '../models/bookmark.dart';
@@ -15,6 +16,7 @@ import '../services/bookmark_service.dart';
 import '../services/highlight_service.dart';
 import '../services/note_service.dart';
 import '../services/progress_service.dart';
+import 'page_geometry_engine.dart';
 import 'pdf_search_controller.dart';
 import 'widgets/annotation_action_bar.dart';
 
@@ -42,12 +44,38 @@ const int _kNoteAnnotationColor = 0x8C00BCD4;
 /// 1. `pdf_reading_tracker_viewer.dart` — a `_scrollDetectionActive` flag
 ///    gates calls to [onPageChanged]. Once the first
 ///    [ScrollUpdateNotification] fires, [onPageChanged] is no longer
-///    forwarded here; [onScrollUpdate]'s midpoint algorithm is authoritative.
+///    forwarded here; [onScrollUpdate]'s geometry-based algorithm is
+///    authoritative.
 ///
 /// 2. This file — [goToPage] installs a 1.5 s timeout to auto-clear
 ///    `_pendingJumpTarget`. Without the timeout, a rendering delay or scroll
 ///    overshoot could leave the guard set indefinitely, silently swallowing
 ///    all subsequent [onScrollUpdate] page detections.
+///
+/// ### Phase 2 — geometry-based page detection
+///
+/// [onScrollUpdate] previously assumed every page has equal height
+/// (`maxScrollExtent / (totalPages - 1)`), which is wrong for PDFs with
+/// mixed portrait/landscape/scanned pages. It now delegates to a
+/// [PageGeometryEngine] built once from each page's real geometry (see
+/// [_rebuildGeometryIfPossible]) and picks whichever page occupies the
+/// largest visible area — never a first/top/scroll-direction heuristic.
+/// The old average-height formula is retained only as a transient
+/// fallback for the brief window before geometry has finished building.
+///
+/// ### Phase 2 — progress percentage correctness
+///
+/// [_updateProgressPct] now computes two values on every page change:
+/// - [progressPct] (double) — the exact mathematical value
+///   `(currentPage + 1) / totalPages * 100`, clamped to `[0, 100]`. Used
+///   for persistence and for the continuous progress-bar fill width.
+/// - [displayPercent] (int) — a **display-safe** integer percent that
+///   guarantees: the first page never shows 0%, the last page always
+///   shows exactly 100%, and every value stays within `[1, 100]` once a
+///   document is loaded. This fixes a UX bug where large documents (e.g.
+///   500+ pages) would round `0.2%` down to a displayed "0%" on the first
+///   page, and — because rounding is otherwise unbiased — could show
+///   "99%" on the last page instead of "100%".
 class PdfViewerController extends ChangeNotifier {
   PdfViewerController({
     required this.pdfId,
@@ -55,10 +83,14 @@ class PdfViewerController extends ChangeNotifier {
     this.assetPath,
     this.filePath,
     this.onDeviceFilePath,
-  }) : assert(
-  (assetPath != null) != (filePath != null),
-  'Provide exactly one of assetPath or filePath.',
-  );
+    bool swipeHorizontal = false,
+    double pageSpacing = 12.0,
+  })  : _swipeHorizontal = swipeHorizontal,
+        _pageSpacing = swipeHorizontal ? 0.0 : pageSpacing,
+        assert(
+        (assetPath != null) != (filePath != null),
+        'Provide exactly one of assetPath or filePath.',
+        );
 
   final String pdfId;
   final String pdfTitle;
@@ -115,13 +147,44 @@ class PdfViewerController extends ChangeNotifier {
   int _totalPages = 0;
   int get totalPages => _totalPages;
 
+  /// Exact mathematical progress in `[0.0, 100.0]`. Used for persistence
+  /// and for the progress-bar fill fraction, both of which want the
+  /// unrounded value (the fill bar already reaches exactly 100.0 on the
+  /// last page with no rounding involved).
   double _progressPct = 0.0;
   double get progressPct => _progressPct;
 
+  /// Display-safe integer percent for the "NN%" text label.
+  ///
+  /// Guarantees, whenever `totalPages > 0`:
+  /// - first page (`currentPage == 0`) is never displayed as 0%.
+  /// - last page (`currentPage == totalPages - 1`) is always displayed
+  ///   as exactly 100%.
+  /// - every value is clamped to `[1, 100]` — never negative, never over
+  ///   100, never zero once a document has loaded.
+  int _displayPercent = 0;
+  int get displayPercent => _displayPercent;
+
   void _updateProgressPct() {
-    _progressPct = _totalPages <= 0
-        ? 0.0
-        : ((_currentPage + 1) / _totalPages * 100.0).clamp(0.0, 100.0);
+    if (_totalPages <= 0) {
+      _progressPct = 0.0;
+      _displayPercent = 0;
+      return;
+    }
+
+    final raw =
+    ((_currentPage + 1) / _totalPages * 100.0).clamp(0.0, 100.0);
+    _progressPct = raw;
+
+    if (_currentPage >= _totalPages - 1) {
+      // Last page: always exactly 100%, regardless of rounding.
+      _displayPercent = 100;
+    } else {
+      // Every other page: rounded to nearest integer, but never allowed
+      // to round down to 0 and never allowed to round up to 100 before
+      // the reader has actually reached the last page.
+      _displayPercent = raw.round().clamp(1, 99);
+    }
   }
 
   List<Bookmark> _bookmarks = [];
@@ -180,10 +243,32 @@ class PdfViewerController extends ChangeNotifier {
   int _persistedTotalPages = -1;
 
   // -------------------------------------------------------------------------
-  // Scroll-extent page detection
+  // Scroll-extent page detection (legacy fallback — see class doc)
   // -------------------------------------------------------------------------
 
   double _lastMaxScrollExtent = 0.0;
+
+  // -------------------------------------------------------------------------
+  // Geometry-based page detection (Phase 2)
+  // -------------------------------------------------------------------------
+
+  /// Cached geometry table. Built once per document load and rebuilt only
+  /// on a genuine viewport cross-axis size change (rotation / resize).
+  /// Never touched during scrolling — [onScrollUpdate] only reads it.
+  PageGeometryEngine? _geometryEngine;
+
+  /// Reference to the loaded Syncfusion document, kept only so a later
+  /// viewport-size change can rebuild geometry without re-parsing the PDF
+  /// (page sizes are read straight off this already-loaded object).
+  sf.PdfDocument? _loadedDocument;
+
+  /// Last known viewport size, updated by
+  /// [onViewportSizeChanged] (driven by a [LayoutBuilder] in the viewer,
+  /// not by scroll events).
+  Size _viewportSize = Size.zero;
+
+  final bool _swipeHorizontal;
+  final double _pageSpacing;
 
   // -------------------------------------------------------------------------
   // Debounce
@@ -204,6 +289,8 @@ class PdfViewerController extends ChangeNotifier {
     _pendingJumpTarget = null;
     _pendingSelection = null;
     _selectionSnapshot = null;
+    _geometryEngine = null;
+    _loadedDocument = null;
 
     try {
       if (filePath != null) {
@@ -261,6 +348,8 @@ class PdfViewerController extends ChangeNotifier {
     savingNotifier.dispose();
     highlightNotifier.dispose();
     notesNotifier.dispose();
+    _loadedDocument = null;
+    _geometryEngine = null;
     sfController.dispose();
     super.dispose();
   }
@@ -275,23 +364,26 @@ class PdfViewerController extends ChangeNotifier {
   /// The viewer layer gates calls to this method behind
   /// `!_scrollDetectionActive`. It is only called before the first scroll
   /// event fires — i.e., for the initial page restore after document load.
-  /// Once the user scrolls, [onScrollUpdate]'s midpoint algorithm is the
-  /// sole authority and this method is never forwarded from the viewer.
+  /// Once the user scrolls, [onScrollUpdate]'s geometry-based algorithm is
+  /// the sole authority and this method is never forwarded from the viewer.
   void onPageChanged(int newPageNumber) {
     if (_disposed) return;
     _updateCurrentPage(newPageNumber - 1, source: 'onPageChanged');
   }
 
-  /// Called by [NotificationListener<ScrollUpdateNotification>] in the viewer.
+  /// Called by [NotificationListener<ScrollUpdateNotification>] in the
+  /// viewer on every scroll frame.
   ///
-  /// Computes the dominant visible page using the viewport midpoint:
+  /// Reads only cached, precomputed geometry (see [_geometryEngine]) —
+  /// no PDF parsing, no allocation, no expensive per-frame work. Picks
+  /// whichever page occupies the largest visible area, correctly
+  /// handling any number of simultaneously visible pages (phones,
+  /// tablets, and desktop/large-viewport layouts alike).
   ///
-  ///   pageH          = maxScrollExtent / (totalPages − 1)
-  ///   viewportCenter = pixels + viewportDimension / 2
-  ///   dominant       = floor(viewportCenter / pageH) + 1   [clamped]
-  ///
-  /// The page occupying the largest visible fraction is always the one whose
-  /// top is closest to (and below) the viewport center.
+  /// Falls back to the legacy average-page-height formula only in the
+  /// brief transient window before geometry has finished building, or if
+  /// geometry construction failed for some reason — this path is never
+  /// used once [_geometryEngine] is populated.
   void onScrollUpdate(ScrollMetrics metrics) {
     if (_disposed) return;
     if (!_hasRendered) return;
@@ -304,30 +396,43 @@ class PdfViewerController extends ChangeNotifier {
       return;
     }
 
-    if (_lastMaxScrollExtent <= 0) {
-      final candidate = sfController.pageNumber;
-      if (candidate >= 1) {
-        _updateCurrentPage(candidate - 1, source: 'onScrollUpdate:fallback');
+    final engine = _geometryEngine;
+    if (engine == null || engine.pageCount != _totalPages) {
+      // Legacy fallback — average page height. Only reachable before
+      // geometry has finished building or if it failed to build.
+      if (_lastMaxScrollExtent <= 0) {
+        final candidate = sfController.pageNumber;
+        if (candidate >= 1) {
+          _updateCurrentPage(candidate - 1,
+              source: 'onScrollUpdate:fallback');
+        }
+        return;
       }
+      final pageH = _lastMaxScrollExtent / (_totalPages - 1).toDouble();
+      final viewportCenter =
+          metrics.pixels + (metrics.viewportDimension / 2.0);
+      final dominant =
+          (viewportCenter / pageH).floor().clamp(0, _totalPages - 1) + 1;
+      _updateCurrentPage(dominant - 1, source: 'onScrollUpdate:fallback');
       return;
     }
 
-    final pageH = _lastMaxScrollExtent / (_totalPages - 1).toDouble();
-    final viewportCenter =
-        metrics.pixels + (metrics.viewportDimension / 2.0);
-    final dominant =
-        (viewportCenter / pageH).floor().clamp(0, _totalPages - 1) + 1;
+    final totalContentExtent =
+        metrics.maxScrollExtent + metrics.viewportDimension;
+    final dominantZero = engine.dominantPage(
+      scrollPixels: metrics.pixels,
+      viewportExtent: metrics.viewportDimension,
+      totalContentExtent: totalContentExtent,
+    );
 
-    if (dominant != _currentPage + 1) {
-      _log('[PAGE_DETECT] '
+    if (dominantZero != _currentPage) {
+      _log('[PAGE_DETECT:geometry] '
           'pixels=${metrics.pixels.toStringAsFixed(1)} '
-          'vpH=${metrics.viewportDimension.toStringAsFixed(1)} '
-          'center=${viewportCenter.toStringAsFixed(1)} '
-          'pH=${pageH.toStringAsFixed(1)} '
-          'dominant=$dominant');
+          'vpExtent=${metrics.viewportDimension.toStringAsFixed(1)} '
+          'dominant=${dominantZero + 1}');
     }
 
-    _updateCurrentPage(dominant - 1, source: 'onScrollUpdate');
+    _updateCurrentPage(dominantZero, source: 'onScrollUpdate:geometry');
   }
 
   /// Unified page-update path.
@@ -342,17 +447,27 @@ class PdfViewerController extends ChangeNotifier {
     _updateNoteCountCache();
     _log('[CURRENT_PAGE] page=${_currentPage + 1} '
         'progress=${progressPct.toStringAsFixed(0)}% '
+        'display=$_displayPercent% '
         'source=$source '
         '[PROGRESS_SAVE=scheduled]');
     pageNotifier.notifyListeners();
     _schedulePersistProgress();
   }
 
-  void onDocumentLoaded(int pageCount) {
+  void onDocumentLoaded(int pageCount,  sf.PdfDocument document) {
     if (_disposed) return;
     _totalPages = pageCount;
+    _loadedDocument = document;
     _updateProgressPct();
     _updateNoteCountCache();
+
+    // Geometry is computed once here, from page sizes Syncfusion already
+    // parsed while loading the document — this performs no additional
+    // PDF parsing. It is never recalculated during scrolling; only a
+    // genuine viewport cross-axis size change (rotation / window resize,
+    // via onViewportSizeChanged) can trigger a rebuild.
+    _rebuildGeometryIfPossible();
+
     pageNotifier.notifyListeners();
 
     if (!_hasRendered) {
@@ -372,6 +487,73 @@ class PdfViewerController extends ChangeNotifier {
     if (_disposed) return;
     _error = 'Failed to load PDF: $description';
     notifyListeners();
+  }
+
+  // -------------------------------------------------------------------------
+  // Geometry (Phase 2)
+  // -------------------------------------------------------------------------
+
+  /// Called by the viewer (via a [LayoutBuilder]) whenever the viewer's
+  /// laid-out size changes — on first layout and again only on genuine
+  /// changes such as device rotation, window resize, or split-screen
+  /// transitions. Never called from a scroll callback.
+  ///
+  /// Cheap no-op if the size hasn't materially changed, or if no document
+  /// has finished loading yet (the initial layout pass typically
+  /// completes before the async document load does, so by the time
+  /// [onDocumentLoaded] fires this size is already known and used
+  /// directly there).
+  void onViewportSizeChanged(Size size) {
+    if (_disposed) return;
+    if (size.width <= 0 || size.height <= 0) return;
+
+    final changed = (size.width - _viewportSize.width).abs() > 1.0 ||
+        (size.height - _viewportSize.height).abs() > 1.0;
+    _viewportSize = size;
+    if (!changed) return;
+
+    _rebuildGeometryIfPossible();
+  }
+
+  /// Rebuilds [_geometryEngine] from the currently loaded document and
+  /// viewport size, but only if geometry is missing, stale (cross-axis
+  /// extent drifted since it was built), or page-count mismatched (a new
+  /// document loaded). No-ops otherwise — this is what keeps geometry
+  /// "built only when required" rather than on every call.
+  void _rebuildGeometryIfPossible() {
+    final document = _loadedDocument;
+    if (document == null || _totalPages <= 0) return;
+
+    final crossAxisExtent =
+    _swipeHorizontal ? _viewportSize.height : _viewportSize.width;
+    if (crossAxisExtent <= 0) return;
+
+    final existing = _geometryEngine;
+    if (existing != null &&
+        existing.pageCount == _totalPages &&
+        !existing.isStaleFor(crossAxisExtent)) {
+      return; // already accurate — avoid redundant rebuild
+    }
+
+    try {
+      final sizes = <Size>[
+        for (var i = 0; i < document.pages.count; i++)
+          Size(document.pages[i].size.width, document.pages[i].size.height),
+      ];
+      _geometryEngine = PageGeometryEngine.build(
+        sizes,
+        pageSpacingPx: _pageSpacing,
+        viewportCrossAxisPx: crossAxisExtent,
+        isHorizontalScroll: _swipeHorizontal,
+      );
+      _log('Geometry engine built: pages=${sizes.length} '
+          'crossAxis=${crossAxisExtent.toStringAsFixed(1)} '
+          'horizontal=$_swipeHorizontal '
+          'spacing=$_pageSpacing');
+    } catch (e) {
+      _log('Geometry build failed, using legacy average-height fallback: $e');
+      _geometryEngine = null;
+    }
   }
 
   // -------------------------------------------------------------------------

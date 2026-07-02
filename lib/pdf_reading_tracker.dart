@@ -34,6 +34,10 @@ export 'src/services/pdf_operations/pdf_split_service.dart'
 // ── Search ────────────────────────────────────────────────────────────────────
 export 'src/viewer/pdf_search_controller.dart' show PdfSearchController;
 
+// ── Immersive / Reading Settings (Phase 3A) ───────────────────────────────────
+export 'src/immersive/reading_settings.dart' show ReadingSettings;
+export 'src/immersive/dnd/dnd_service.dart' show DndCapability, DndSupportLevel;
+
 // ── Public viewer widget ──────────────────────────────────────────────────────
 export 'src/viewer/pdf_reading_tracker_viewer.dart'
     show PdfReadingTrackerViewer, PdfViewerTheme;
