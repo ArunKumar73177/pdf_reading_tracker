@@ -1,36 +1,51 @@
+import 'dart:async';
+
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 /// Wraps the PDF viewer surface with a single-tap-to-toggle-chrome
-/// gesture, without interfering with any of Syncfusion's own gestures.
+/// gesture, without interfering with Syncfusion's own gestures.
 ///
-/// ### Why this is safe alongside `SfPdfViewer`
+/// ### Runtime re-audit — why the previous `GestureDetector.onTap`
+/// approach was replaced
 ///
-/// `SfPdfViewer` owns its own internal gesture recognizers for double-tap
-/// zoom, long-press text-selection start, and pinch-to-zoom. This widget
-/// registers **only** a [GestureDetector.onTap] — it never declares
-/// `onDoubleTap` or `onLongPress`. Because Flutter's gesture arena only
-/// disambiguates between recognizers that are actually competing for the
-/// same gesture *type*, an ancestor `onTap`-only recognizer does not
-/// introduce the double-tap detection delay (`kDoubleTapTimeout`) into
-/// `SfPdfViewer`'s own double-tap handling, and does not need to "lose" to
-/// it — single taps that aren't claimed by anything else simply reach
-/// here.
+/// The prior version used an ancestor `GestureDetector` declaring only
+/// `onTap`. That's correct in isolation, but `SfPdfViewer` installs its
+/// own internal recognizers (pan/scroll, pinch/scale, double-tap zoom,
+/// long-press selection-start, and a tap recognizer used to dismiss an
+/// active selection). Every `TapGestureRecognizer` hit-tested for the
+/// same pointer lands in **one shared gesture arena**, and arena
+/// resolution for a plain tap is decided by sweep order — because
+/// hit-testing walks front-to-back, Syncfusion's innermost recognizer
+/// enters the arena first and wins, silently swallowing our outer
+/// `onTap` on exactly the taps that matter most (e.g. the first tap
+/// after a selection was active). This is invisible under code review —
+/// every line "looks" correct — and only shows up on-device. It is the
+/// most likely explanation for a user getting stuck with no visible
+/// controls in Immersive Mode.
 ///
-/// ### Placement matters
+/// ### Fix — raw pointer routing instead of a competing recognizer
 ///
-/// This must wrap only the PDF surface itself (`_PdfViewerCore`), **not**
-/// the annotation action bar, progress pill, or app bar — those are
-/// separate `Positioned` siblings in the same `Stack`, not descendants of
-/// this widget, so their own buttons are entirely unaffected and never
-/// trigger the immersive toggle.
+/// [Listener] receives every [PointerDownEvent]/[PointerUpEvent] for its
+/// hit-test region unconditionally — pointer *routing* happens before any
+/// gesture arena is formed, so nothing Syncfusion does internally can
+/// claim or suppress these events. A tap is recognized manually:
+/// - single pointer only (a second finger touching down cancels tap
+///   tracking outright — never mistaken for a pinch),
+/// - movement under [_kTapSlop] (so a pan/scroll/pinch/selection-drag
+///   is never treated as a tap — preserves scroll not revealing chrome),
+/// - completes within [_kTapTimeout] (so a long-press-to-select, which
+///   runs past this, is never treated as a tap),
+/// - and — because Double Tap Zoom outranks Single Tap in priority — a
+///   recognized tap is held for `kDoubleTapTimeout` before firing
+///   [onTap]; if a second tap starts within that window it's cancelled,
+///   leaving Syncfusion's own double-tap-zoom recognizer to handle it
+///   cleanly with no chrome flicker.
 ///
-/// ### Zero overhead when disabled
-///
-/// When [enabled] is `false` (Immersive Mode is off), this widget skips
-/// allocating a `GestureDetector` entirely and returns [child] directly —
-/// there is no hit-testing or gesture-arena cost at all in the default,
-/// non-immersive reading mode.
-class ImmersiveGestureLayer extends StatelessWidget {
+/// Because `Listener` never enters the arena, it also never delays or
+/// blocks Syncfusion's own pinch/double-tap/selection recognizers — it
+/// only observes the same raw events they receive.
+class ImmersiveGestureLayer extends StatefulWidget {
   const ImmersiveGestureLayer({
     super.key,
     required this.enabled,
@@ -43,12 +58,89 @@ class ImmersiveGestureLayer extends StatelessWidget {
   final Widget child;
 
   @override
+  State<ImmersiveGestureLayer> createState() => _ImmersiveGestureLayerState();
+}
+
+class _ImmersiveGestureLayerState extends State<ImmersiveGestureLayer> {
+  // Comfortably above a typical fast tap, comfortably below Flutter's
+  // long-press threshold (~500ms) — so long-press-to-select is never
+  // misidentified as a tap.
+  static const Duration _kTapTimeout = Duration(milliseconds: 350);
+  static const double _kTapSlop = 18.0;
+
+  int _activePointerCount = 0;
+  Offset? _downPosition;
+  DateTime? _downTime;
+  Timer? _pendingTapTimer;
+
+  void _onPointerDown(PointerDownEvent event) {
+    _activePointerCount++;
+
+    if (_activePointerCount > 1) {
+      // A second finger touched down mid-gesture — at minimum a pinch
+      // candidate, never a single tap. Drop any tap tracking entirely.
+      _downPosition = null;
+      _downTime = null;
+      _pendingTapTimer?.cancel();
+      _pendingTapTimer = null;
+      return;
+    }
+
+    if (_pendingTapTimer != null) {
+      // A tap was already pending disambiguation and a new pointer just
+      // went down quickly — this is a double tap. Cancel the pending
+      // single-tap toggle and let Syncfusion's own double-tap-zoom
+      // recognizer own the gesture.
+      _pendingTapTimer!.cancel();
+      _pendingTapTimer = null;
+    }
+
+    _downPosition = event.position;
+    _downTime = DateTime.now();
+  }
+
+  void _onPointerUp(PointerUpEvent event) {
+    _activePointerCount = (_activePointerCount - 1).clamp(0, 1 << 30);
+
+    final downPos = _downPosition;
+    final downTime = _downTime;
+    _downPosition = null;
+    _downTime = null;
+    if (downPos == null || downTime == null) return;
+
+    final movedDistance = (event.position - downPos).distance;
+    final elapsed = DateTime.now().difference(downTime);
+    if (movedDistance > _kTapSlop || elapsed > _kTapTimeout) return;
+
+    // Hold briefly to see if a second tap follows (double-tap zoom).
+    _pendingTapTimer?.cancel();
+    _pendingTapTimer = Timer(kDoubleTapTimeout, () {
+      _pendingTapTimer = null;
+      widget.onTap();
+    });
+  }
+
+  void _onPointerCancel(PointerCancelEvent event) {
+    _activePointerCount = (_activePointerCount - 1).clamp(0, 1 << 30);
+    _downPosition = null;
+    _downTime = null;
+  }
+
+  @override
+  void dispose() {
+    _pendingTapTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    if (!enabled) return child;
-    return GestureDetector(
+    if (!widget.enabled) return widget.child;
+    return Listener(
       behavior: HitTestBehavior.translucent,
-      onTap: onTap,
-      child: child,
+      onPointerDown: _onPointerDown,
+      onPointerUp: _onPointerUp,
+      onPointerCancel: _onPointerCancel,
+      child: widget.child,
     );
   }
 }

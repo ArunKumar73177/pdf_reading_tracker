@@ -40,12 +40,18 @@ import 'reading_settings_controller.dart';
 /// Turning Auto-hide Controls off while a hide timer is pending still
 /// cancels that pending timer (so a stale timer never fires against the
 /// new preference), without forcing visibility either way.
+///
+/// ### Priority #1/#2 audit fix — auto-hide delay
+///
+/// [_autoHideDelay] was previously 4 seconds. Spec calls for 3 seconds of
+/// inactivity before the chrome auto-hides again. Nothing else about the
+/// hide/show mechanics changes — this is a single constant.
 class ImmersiveVisibilityController extends ChangeNotifier {
   ImmersiveVisibilityController({required this.settings});
 
   final ReadingSettingsController settings;
 
-  static const Duration _autoHideDelay = Duration(seconds: 4);
+  static const Duration _autoHideDelay = Duration(seconds: 3);
 
   bool _chromeVisible = true;
   bool get chromeVisible => _chromeVisible;

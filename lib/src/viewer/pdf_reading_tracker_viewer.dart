@@ -823,6 +823,38 @@ class _JumpToPageDialogState extends State<_JumpToPageDialog> {
 // (this widget has no descendant that mounts it).
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// AppBar with collapsible search + overflow menu
+//
+// ### Priority #3 / #6 audit fix — decluttered toolbar
+//
+// Previously rendered 7 permanent icons (reading settings, appearance,
+// search, jump-to-page, notes, highlights, bookmarks). That's too many for
+// a "minimal, reader-focused" toolbar per the spec.
+//
+// Kept visible (highest-frequency, core-to-the-package actions):
+//   Search · Notes · Highlights · Bookmarks  (the last three carry the
+//   badge counts users check constantly while reading)
+//
+// Moved into a single overflow menu (settings-like, opened rarely):
+//   Jump to page · Appearance · Reading settings
+//
+// No functionality removed — every action is still one tap (search/notes/
+// highlights/bookmarks) or two taps (overflow items) away, same callbacks,
+// same public API surface.
+//
+// ### Stability-pass note (unchanged from before)
+//
+// This widget receives only the optional host-supplied [PdfViewerTheme]
+// override and resolves the actual colors itself, live, from
+// `Theme.of(context)` in its own `build()` — the only correct place to do
+// so, since this widget is rebuilt independently by its own
+// `ListenableBuilder` and reading `Theme.of(context)` here cannot cascade
+// into rebuilding `SfPdfViewer`.
+// ---------------------------------------------------------------------------
+
+enum _OverflowAction { jumpToPage, appearance, readingSettings }
+
 class _AppBarWithSearch extends StatelessWidget {
   const _AppBarWithSearch({
     required this.title,
@@ -884,8 +916,10 @@ class _AppBarWithSearch extends StatelessWidget {
     // Live read, resolved fresh every time THIS widget is rebuilt by its
     // own ListenableBuilder — never captured/frozen from an ancestor.
     final cs = Theme.of(context).colorScheme;
-    final backgroundColor = viewerTheme?.appBarBackgroundColor ?? cs.primaryContainer;
-    final foregroundColor = viewerTheme?.appBarForegroundColor ?? cs.onPrimaryContainer;
+    final backgroundColor =
+        viewerTheme?.appBarBackgroundColor ?? cs.primaryContainer;
+    final foregroundColor =
+        viewerTheme?.appBarForegroundColor ?? cs.onPrimaryContainer;
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -895,23 +929,6 @@ class _AppBarWithSearch extends StatelessWidget {
           backgroundColor: backgroundColor,
           foregroundColor: foregroundColor,
           actions: [
-            if (showReadingSettingsToggle)
-              IconButton(
-                icon: const Icon(Icons.tune_rounded),
-                tooltip: 'Reading settings',
-                onPressed: onOpenReadingSettings,
-              ),
-            if (showAppearanceToggle)
-              IconButton(
-                icon: AnimatedSwitcher(
-                  duration: AppDurations.medium,
-                  transitionBuilder: (child, anim) =>
-                      FadeTransition(opacity: anim, child: child),
-                  child: Icon(_appearanceIcon, key: ValueKey(appearanceMode)),
-                ),
-                tooltip: 'Appearance',
-                onPressed: onOpenAppearanceSelector,
-              ),
             if (enableSearch)
               IconButton(
                 icon: Icon(searchVisible
@@ -920,11 +937,6 @@ class _AppBarWithSearch extends StatelessWidget {
                 tooltip: searchVisible ? 'Close search' : 'Search text',
                 onPressed: onToggleSearch,
               ),
-            IconButton(
-              icon: const Icon(Icons.redo_rounded),
-              tooltip: 'Jump to page',
-              onPressed: onJumpToPage,
-            ),
             IconButton(
               icon: Badge(
                 isLabelVisible: noteCount > 0,
@@ -951,6 +963,48 @@ class _AppBarWithSearch extends StatelessWidget {
               ),
               tooltip: 'View bookmarks',
               onPressed: onBookmarks,
+            ),
+            PopupMenuButton<_OverflowAction>(
+              icon: const Icon(Icons.more_vert_rounded),
+              tooltip: 'More',
+              onSelected: (action) {
+                switch (action) {
+                  case _OverflowAction.jumpToPage:
+                    onJumpToPage();
+                  case _OverflowAction.appearance:
+                    onOpenAppearanceSelector();
+                  case _OverflowAction.readingSettings:
+                    onOpenReadingSettings();
+                }
+              },
+              itemBuilder: (context) => [
+                const PopupMenuItem(
+                  value: _OverflowAction.jumpToPage,
+                  child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.redo_rounded),
+                    title: Text('Jump to page'),
+                  ),
+                ),
+                if (showAppearanceToggle)
+                  PopupMenuItem(
+                    value: _OverflowAction.appearance,
+                    child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(_appearanceIcon),
+                      title: const Text('Appearance'),
+                    ),
+                  ),
+                if (showReadingSettingsToggle)
+                  const PopupMenuItem(
+                    value: _OverflowAction.readingSettings,
+                    child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.tune_rounded),
+                      title: Text('Reading settings'),
+                    ),
+                  ),
+              ],
             ),
           ],
         ),
