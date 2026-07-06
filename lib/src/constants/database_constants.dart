@@ -7,18 +7,18 @@ abstract final class DatabaseConstants {
   // ---------------------------------------------------------------------------
 
   static const String tableReadingProgress = 'reading_progress';
-  static const String tableBookmarks        = 'bookmarks';
-  static const String tableHighlights       = 'highlights';
-  static const String tableNotes            = 'notes';
+  static const String tableBookmarks = 'bookmarks';
+  static const String tableHighlights = 'highlights';
+  static const String tableNotes = 'notes';
 
   // ---------------------------------------------------------------------------
   // Shared columns
   // ---------------------------------------------------------------------------
 
-  static const String columnId        = 'id';
-  static const String columnPdfId     = 'pdf_id';
-  static const String columnPage      = 'page';
-  static const String columnNote      = 'note';
+  static const String columnId = 'id';
+  static const String columnPdfId = 'pdf_id';
+  static const String columnPage = 'page';
+  static const String columnNote = 'note';
   static const String columnCreatedAt = 'created_at';
   static const String columnUpdatedAt = 'updated_at';
 
@@ -27,21 +27,21 @@ abstract final class DatabaseConstants {
   // ---------------------------------------------------------------------------
 
   static const String columnCurrentPage = 'current_page';
-  static const String columnTotalPages  = 'total_pages';
+  static const String columnTotalPages = 'total_pages';
   static const String columnProgressPct = 'progress_pct';
-  static const String columnLastReadAt  = 'last_read_at';
-  static const String columnTitle       = 'title';
-  static const String columnFilePath    = 'file_path';
+  static const String columnLastReadAt = 'last_read_at';
+  static const String columnTitle = 'title';
+  static const String columnFilePath = 'file_path';
 
   // ---------------------------------------------------------------------------
   // highlights columns
   // ---------------------------------------------------------------------------
 
-  static const String columnSelectedText   = 'selected_text';
+  static const String columnSelectedText = 'selected_text';
 
   /// Pipe-separated list of "left,top,right,bottom" rect strings.
-  static const String columnRectList       = 'rect_list';
-  static const String columnColorValue     = 'color_value';
+  static const String columnRectList = 'rect_list';
+  static const String columnColorValue = 'color_value';
 
   /// Annotation type string — one of: 'highlight', 'underline',
   /// 'strikethrough', 'squiggly'.

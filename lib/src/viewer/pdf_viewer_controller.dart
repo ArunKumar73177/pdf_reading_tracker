@@ -88,8 +88,8 @@ class PdfViewerController extends ChangeNotifier {
   })  : _swipeHorizontal = swipeHorizontal,
         _pageSpacing = swipeHorizontal ? 0.0 : pageSpacing,
         assert(
-        (assetPath != null) != (filePath != null),
-        'Provide exactly one of assetPath or filePath.',
+          (assetPath != null) != (filePath != null),
+          'Provide exactly one of assetPath or filePath.',
         );
 
   final String pdfId;
@@ -105,7 +105,7 @@ class PdfViewerController extends ChangeNotifier {
   final sf.PdfViewerController sfController = sf.PdfViewerController();
 
   late final PdfSearchController searchController =
-  PdfSearchController(sfController: sfController);
+      PdfSearchController(sfController: sfController);
 
   // -------------------------------------------------------------------------
   // Scoped notifiers
@@ -172,8 +172,7 @@ class PdfViewerController extends ChangeNotifier {
       return;
     }
 
-    final raw =
-    ((_currentPage + 1) / _totalPages * 100.0).clamp(0.0, 100.0);
+    final raw = ((_currentPage + 1) / _totalPages * 100.0).clamp(0.0, 100.0);
     _progressPct = raw;
 
     if (_currentPage >= _totalPages - 1) {
@@ -403,14 +402,12 @@ class PdfViewerController extends ChangeNotifier {
       if (_lastMaxScrollExtent <= 0) {
         final candidate = sfController.pageNumber;
         if (candidate >= 1) {
-          _updateCurrentPage(candidate - 1,
-              source: 'onScrollUpdate:fallback');
+          _updateCurrentPage(candidate - 1, source: 'onScrollUpdate:fallback');
         }
         return;
       }
       final pageH = _lastMaxScrollExtent / (_totalPages - 1).toDouble();
-      final viewportCenter =
-          metrics.pixels + (metrics.viewportDimension / 2.0);
+      final viewportCenter = metrics.pixels + (metrics.viewportDimension / 2.0);
       final dominant =
           (viewportCenter / pageH).floor().clamp(0, _totalPages - 1) + 1;
       _updateCurrentPage(dominant - 1, source: 'onScrollUpdate:fallback');
@@ -454,7 +451,7 @@ class PdfViewerController extends ChangeNotifier {
     _schedulePersistProgress();
   }
 
-  void onDocumentLoaded(int pageCount,  sf.PdfDocument document) {
+  void onDocumentLoaded(int pageCount, sf.PdfDocument document) {
     if (_disposed) return;
     _totalPages = pageCount;
     _loadedDocument = document;
@@ -525,7 +522,7 @@ class PdfViewerController extends ChangeNotifier {
     if (document == null || _totalPages <= 0) return;
 
     final crossAxisExtent =
-    _swipeHorizontal ? _viewportSize.height : _viewportSize.width;
+        _swipeHorizontal ? _viewportSize.height : _viewportSize.width;
     if (crossAxisExtent <= 0) return;
 
     final existing = _geometryEngine;
@@ -561,10 +558,10 @@ class PdfViewerController extends ChangeNotifier {
   // -------------------------------------------------------------------------
 
   void captureTextSelection(
-      String? selectedText,
-      Rect? globalRegion,
-      List<sf.PdfTextLine>? textLines,
-      ) {
+    String? selectedText,
+    Rect? globalRegion,
+    List<sf.PdfTextLine>? textLines,
+  ) {
     if (_disposed) return;
 
     if (selectedText == null || selectedText.trim().isEmpty) {
@@ -624,11 +621,11 @@ class PdfViewerController extends ChangeNotifier {
 
     final rects = textLines
         .map((line) => HighlightRect(
-      left: line.bounds.left,
-      top: line.bounds.top,
-      right: line.bounds.right,
-      bottom: line.bounds.bottom,
-    ))
+              left: line.bounds.left,
+              top: line.bounds.top,
+              right: line.bounds.right,
+              bottom: line.bounds.bottom,
+            ))
         .toList(growable: false);
 
     final zeroPage = textLines.first.pageNumber - 1;
@@ -692,8 +689,7 @@ class PdfViewerController extends ChangeNotifier {
     _removeSfHighlightAnnotation(stored);
     await HighlightService.instance.removeHighlight(id);
     if (_disposed) return;
-    _highlights =
-        _highlights.where((h) => h.id != id).toList(growable: false);
+    _highlights = _highlights.where((h) => h.id != id).toList(growable: false);
     _log('Annotation removed id=$id');
     highlightNotifier.notifyListeners();
   }
@@ -704,16 +700,15 @@ class PdfViewerController extends ChangeNotifier {
 
     final sameTypeOnPage = _highlights
         .where((h) =>
-    h.page == highlight.page &&
-        h.annotationType == highlight.annotationType)
+            h.page == highlight.page &&
+            h.annotationType == highlight.annotationType)
         .toList(growable: false);
-    final relativeIdx =
-    sameTypeOnPage.indexWhere((h) => h.id == highlight.id);
+    final relativeIdx = sameTypeOnPage.indexWhere((h) => h.id == highlight.id);
 
     final sfOnPage =
-    _sfAnnotationsOfType(highlight.annotationType, allAnnotations)
-        .where((a) => a.pageNumber == sfPage)
-        .toList(growable: false);
+        _sfAnnotationsOfType(highlight.annotationType, allAnnotations)
+            .where((a) => a.pageNumber == sfPage)
+            .toList(growable: false);
 
     if (relativeIdx >= 0 && relativeIdx < sfOnPage.length) {
       sfController.removeAnnotation(sfOnPage[relativeIdx]);
@@ -730,18 +725,16 @@ class PdfViewerController extends ChangeNotifier {
   }
 
   List<sf.Annotation> _sfAnnotationsOfType(
-      AnnotationType type,
-      List<sf.Annotation> allAnnotations,
-      ) {
+    AnnotationType type,
+    List<sf.Annotation> allAnnotations,
+  ) {
     switch (type) {
       case AnnotationType.highlight:
         return allAnnotations.whereType<sf.HighlightAnnotation>().toList();
       case AnnotationType.underline:
         return allAnnotations.whereType<sf.UnderlineAnnotation>().toList();
       case AnnotationType.strikethrough:
-        return allAnnotations
-            .whereType<sf.StrikethroughAnnotation>()
-            .toList();
+        return allAnnotations.whereType<sf.StrikethroughAnnotation>().toList();
       case AnnotationType.squiggly:
         return allAnnotations.whereType<sf.SquigglyAnnotation>().toList();
     }
@@ -775,10 +768,10 @@ class PdfViewerController extends ChangeNotifier {
       if (highlight.rectList.isEmpty) return;
       final textLines = highlight.rectList
           .map((r) => sf.PdfTextLine(
-        Rect.fromLTRB(r.left, r.top, r.right, r.bottom),
-        highlight.selectedText,
-        highlight.page + 1,
-      ))
+                Rect.fromLTRB(r.left, r.top, r.right, r.bottom),
+                highlight.selectedText,
+                highlight.page + 1,
+              ))
           .toList(growable: false);
 
       sfController.addAnnotation(
@@ -826,14 +819,14 @@ class PdfViewerController extends ChangeNotifier {
     try {
       final textLines = note.rectList
           .map((r) => sf.PdfTextLine(
-        Rect.fromLTRB(r.left, r.top, r.right, r.bottom),
-        note.selectedText,
-        note.page + 1,
-      ))
+                Rect.fromLTRB(r.left, r.top, r.right, r.bottom),
+                note.selectedText,
+                note.page + 1,
+              ))
           .toList(growable: false);
 
       final annotation =
-      sf.HighlightAnnotation(textBoundsCollection: textLines);
+          sf.HighlightAnnotation(textBoundsCollection: textLines);
       annotation.color = const Color(_kNoteAnnotationColor);
       sfController.addAnnotation(annotation);
       return true;
@@ -863,8 +856,7 @@ class PdfViewerController extends ChangeNotifier {
     final anchoredNotesOnPage = _notes
         .where((n) => n.page == note.page && n.rectList.isNotEmpty)
         .toList(growable: false);
-    final relativeIdx =
-    anchoredNotesOnPage.indexWhere((n) => n.id == note.id);
+    final relativeIdx = anchoredNotesOnPage.indexWhere((n) => n.id == note.id);
 
     if (relativeIdx >= 0 && relativeIdx < tealOnPage.length) {
       sfController.removeAnnotation(tealOnPage[relativeIdx]);
@@ -908,8 +900,7 @@ class PdfViewerController extends ChangeNotifier {
       _log('Page $_currentPage already bookmarked');
       return;
     }
-    final bm =
-    Bookmark.create(pdfId: pdfId, page: _currentPage, note: note);
+    final bm = Bookmark.create(pdfId: pdfId, page: _currentPage, note: note);
     final rowId = await BookmarkService.instance.addBookmark(bm);
     if (_disposed) return;
     _log('Bookmark added rowId=$rowId page=$_currentPage');
@@ -923,8 +914,7 @@ class PdfViewerController extends ChangeNotifier {
   Future<void> removeBookmark(int id) async {
     await BookmarkService.instance.removeBookmark(id);
     if (_disposed) return;
-    _bookmarks =
-        _bookmarks.where((b) => b.id != id).toList(growable: false);
+    _bookmarks = _bookmarks.where((b) => b.id != id).toList(growable: false);
     bookmarksNotifier.notifyListeners();
     _log('Bookmark removed id=$id');
   }
@@ -1067,8 +1057,8 @@ class PdfViewerController extends ChangeNotifier {
   }
 
   void _schedulePersistProgress() {
-    if (_currentPage == _persistedPage &&
-        _totalPages == _persistedTotalPages) return;
+    if (_currentPage == _persistedPage && _totalPages == _persistedTotalPages)
+      return;
     _progressDebounce?.cancel();
     _progressDebounce = Timer(_kProgressDebounce, _persistProgress);
   }
@@ -1110,12 +1100,12 @@ class PdfViewerController extends ChangeNotifier {
 
     ProgressService.instance
         .saveProgress(ReadingProgress.create(
-      pdfId: savedPdfId,
-      currentPage: savedPage,
-      totalPages: savedTotalPages,
-      title: savedTitle,
-      filePath: savedFilePath,
-    ))
+          pdfId: savedPdfId,
+          currentPage: savedPage,
+          totalPages: savedTotalPages,
+          title: savedTitle,
+          filePath: savedFilePath,
+        ))
         .then((_) {})
         .catchError((Object e) {
       debugPrint('[PdfViewerCtrl:$savedPdfId] Dispose-time save failed: $e');

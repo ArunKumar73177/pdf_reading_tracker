@@ -1,14 +1,15 @@
 // ── Models ────────────────────────────────────────────────────────────────────
-export 'src/models/bookmark.dart'         show Bookmark;
-export 'src/models/highlight.dart'        show Highlight, HighlightRect, AnnotationType, AnnotationColors;
-export 'src/models/note.dart'             show Note, NoteRect;
+export 'src/models/bookmark.dart' show Bookmark;
+export 'src/models/highlight.dart'
+    show Highlight, HighlightRect, AnnotationType, AnnotationColors;
+export 'src/models/note.dart' show Note, NoteRect;
 export 'src/models/reading_progress.dart' show ReadingProgress;
 
 // ── Service exceptions ────────────────────────────────────────────────────────
-export 'src/services/bookmark_service.dart'  show BookmarkServiceException;
+export 'src/services/bookmark_service.dart' show BookmarkServiceException;
 export 'src/services/highlight_service.dart' show HighlightServiceException;
-export 'src/services/note_service.dart'      show NoteServiceException;
-export 'src/services/progress_service.dart'  show ProgressServiceException;
+export 'src/services/note_service.dart' show NoteServiceException;
+export 'src/services/progress_service.dart' show ProgressServiceException;
 
 // ── PDF picker ────────────────────────────────────────────────────────────────
 export 'src/services/pdf_picker_service.dart'
@@ -17,13 +18,13 @@ export 'src/services/pdf_picker_service.dart'
 // ── PDF Operations ────────────────────────────────────────────────────────────
 export 'src/services/pdf_operations/pdf_operation_exception.dart'
     show
-    PdfOperationException,
-    PdfMergeException,
-    PdfMergeFileNotFoundException,
-    PdfMergeCorruptFileException,
-    PdfSplitException,
-    PdfSplitFileNotFoundException,
-    PdfSplitInvalidRangeException;
+        PdfOperationException,
+        PdfMergeException,
+        PdfMergeFileNotFoundException,
+        PdfMergeCorruptFileException,
+        PdfSplitException,
+        PdfSplitFileNotFoundException,
+        PdfSplitInvalidRangeException;
 
 export 'src/services/pdf_operations/pdf_merge_service.dart'
     show PdfMergeService;
@@ -71,43 +72,43 @@ abstract final class PdfReadingTracker {
   PdfReadingTracker._();
 
   // ── Progress API ───────────────────────────────────────────────────────────
-  static Future<int>                   saveProgress(ReadingProgress progress) =>
+  static Future<int> saveProgress(ReadingProgress progress) =>
       ProgressService.instance.saveProgress(progress);
-  static Future<ReadingProgress?>      getProgress(String pdfId) =>
+  static Future<ReadingProgress?> getProgress(String pdfId) =>
       ProgressService.instance.getProgress(pdfId);
   static Future<List<ReadingProgress>> getAllProgress() =>
       ProgressService.instance.getAllProgress();
   static Future<List<ReadingProgress>> getRecentlyRead({int limit = 20}) =>
       ProgressService.instance.getRecentlyRead(limit: limit);
-  static Future<bool>                  deleteProgress(String pdfId) =>
+  static Future<bool> deleteProgress(String pdfId) =>
       ProgressService.instance.deleteProgress(pdfId);
-  static Future<void>                  clearAllProgress() =>
+  static Future<void> clearAllProgress() =>
       ProgressService.instance.clearAllProgress();
 
   // ── Bookmark API ───────────────────────────────────────────────────────────
-  static Future<int>            addBookmark(Bookmark bookmark) =>
+  static Future<int> addBookmark(Bookmark bookmark) =>
       BookmarkService.instance.addBookmark(bookmark);
   static Future<List<Bookmark>> getBookmarks(String pdfId) =>
       BookmarkService.instance.getBookmarks(pdfId);
-  static Future<bool>           removeBookmark(int id) =>
+  static Future<bool> removeBookmark(int id) =>
       BookmarkService.instance.removeBookmark(id);
-  static Future<bool>           updateBookmarkNote(int id, String? note) =>
+  static Future<bool> updateBookmarkNote(int id, String? note) =>
       BookmarkService.instance.updateNote(id, note);
-  static Future<void>           clearBookmarks(String pdfId) =>
+  static Future<void> clearBookmarks(String pdfId) =>
       BookmarkService.instance.clearBookmarks(pdfId);
-  static Future<void>           clearAllBookmarks() =>
+  static Future<void> clearAllBookmarks() =>
       BookmarkService.instance.clearAllBookmarks();
 
   // ── Highlight API (v2.4.0) ─────────────────────────────────────────────────
-  static Future<int>             addHighlight(Highlight highlight) =>
+  static Future<int> addHighlight(Highlight highlight) =>
       HighlightService.instance.addHighlight(highlight);
   static Future<List<Highlight>> getHighlights(String pdfId) =>
       HighlightService.instance.getHighlights(pdfId);
-  static Future<bool>            removeHighlight(int id) =>
+  static Future<bool> removeHighlight(int id) =>
       HighlightService.instance.removeHighlight(id);
-  static Future<void>            clearHighlights(String pdfId) =>
+  static Future<void> clearHighlights(String pdfId) =>
       HighlightService.instance.clearHighlights(pdfId);
-  static Future<void>            clearAllHighlights() =>
+  static Future<void> clearAllHighlights() =>
       HighlightService.instance.clearAllHighlights();
 
   // ── Notes API (v2.7.0 — text-anchored) ────────────────────────────────────
@@ -118,16 +119,17 @@ abstract final class PdfReadingTracker {
   /// `Note.create(...)` object together with the live selection data
   /// separately.  Pass empty values when creating notes programmatically.
   static Future<int> addNote(
-      Note note, {
-        String selectedText = '',
-        List<NoteRect> rectList = const [],
-      }) {
+    Note note, {
+    String selectedText = '',
+    List<NoteRect> rectList = const [],
+  }) {
     // Merge caller-supplied anchor data so it is never silently dropped.
     final anchored = (selectedText.isNotEmpty || rectList.isNotEmpty)
         ? note.copyWith(
-      selectedText: selectedText.isNotEmpty ? selectedText : note.selectedText,
-      rectList:     rectList.isNotEmpty     ? rectList     : note.rectList,
-    )
+            selectedText:
+                selectedText.isNotEmpty ? selectedText : note.selectedText,
+            rectList: rectList.isNotEmpty ? rectList : note.rectList,
+          )
         : note;
     return NoteService.instance.addNote(anchored);
   }
@@ -141,12 +143,10 @@ abstract final class PdfReadingTracker {
   static Future<bool> updateNoteText(int id, String text) =>
       NoteService.instance.updateNote(id, text);
 
-  static Future<bool> removeNote(int id) =>
-      NoteService.instance.removeNote(id);
+  static Future<bool> removeNote(int id) => NoteService.instance.removeNote(id);
 
   static Future<void> clearNotes(String pdfId) =>
       NoteService.instance.clearNotes(pdfId);
 
-  static Future<void> clearAllNotes() =>
-      NoteService.instance.clearAllNotes();
+  static Future<void> clearAllNotes() => NoteService.instance.clearAllNotes();
 }

@@ -203,36 +203,33 @@ class _MergeTabState extends State<_MergeTab> {
             style: tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
           ),
           const SizedBox(height: 16),
-
           if (_selectedPaths.isNotEmpty) ...[
             Text('Selected PDFs (${_selectedPaths.length})',
                 style: tt.labelMedium?.copyWith(color: cs.primary)),
             const SizedBox(height: 8),
             ..._selectedPaths.asMap().entries.map((e) => _FileChip(
-              index: e.key + 1,
-              path: e.value,
-              onRemove: () =>
-                  setState(() => _selectedPaths.removeAt(e.key)),
-            )),
+                  index: e.key + 1,
+                  path: e.value,
+                  onRemove: () =>
+                      setState(() => _selectedPaths.removeAt(e.key)),
+                )),
             const SizedBox(height: 16),
           ],
-
           OutlinedButton.icon(
             onPressed: _busy ? null : _pickPdf,
             icon: const Icon(Icons.add_rounded),
             label: const Text('Add PDF'),
           ),
           const SizedBox(height: 12),
-
           FilledButton.icon(
             onPressed: (_busy || _selectedPaths.length < 2) ? null : _merge,
             icon: _busy
                 ? const SizedBox(
-              width: 18,
-              height: 18,
-              child: CircularProgressIndicator(
-                  strokeWidth: 2, color: Colors.white),
-            )
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: Colors.white),
+                  )
                 : const Icon(Icons.merge_type_rounded),
             label: Text(_busy ? 'Merging…' : 'Merge PDFs'),
           ),
@@ -351,9 +348,9 @@ class _SplitTabState extends State<_SplitTab> {
   }
 
   Future<void> _showSplitResultsSheet(
-      BuildContext context,
-      List<String> paths,
-      ) async {
+    BuildContext context,
+    List<String> paths,
+  ) async {
     final cs = Theme.of(context).colorScheme;
     await showModalBottomSheet<void>(
       context: context,
@@ -377,29 +374,29 @@ class _SplitTabState extends State<_SplitTab> {
             ),
             ...paths.asMap().entries.map(
                   (e) => ListTile(
-                leading: CircleAvatar(
-                  backgroundColor: cs.secondaryContainer,
-                  foregroundColor: cs.onSecondaryContainer,
-                  child: Text('${e.key + 1}'),
+                    leading: CircleAvatar(
+                      backgroundColor: cs.secondaryContainer,
+                      foregroundColor: cs.onSecondaryContainer,
+                      child: Text('${e.key + 1}'),
+                    ),
+                    title: Text(
+                      PdfIdHelper.titleFromFilePath(e.value),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    trailing: const Icon(Icons.open_in_new_rounded),
+                    onTap: () async {
+                      // Close the sheet first, then open the PDF using the
+                      // original screen's context (captured before the await).
+                      Navigator.of(sheetCtx).pop();
+                      if (!context.mounted) return;
+                      await _openOutputPdf(
+                        context,
+                        persistentPath: e.value,
+                      );
+                    },
+                  ),
                 ),
-                title: Text(
-                  PdfIdHelper.titleFromFilePath(e.value),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                trailing: const Icon(Icons.open_in_new_rounded),
-                onTap: () async {
-                  // Close the sheet first, then open the PDF using the
-                  // original screen's context (captured before the await).
-                  Navigator.of(sheetCtx).pop();
-                  if (!context.mounted) return;
-                  await _openOutputPdf(
-                    context,
-                    persistentPath: e.value,
-                  );
-                },
-              ),
-            ),
             const SizedBox(height: 8),
           ],
         ),
@@ -422,7 +419,6 @@ class _SplitTabState extends State<_SplitTab> {
             style: tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
           ),
           const SizedBox(height: 16),
-
           if (_selectedPath != null) ...[
             _FileChip(
               index: 1,
@@ -431,14 +427,12 @@ class _SplitTabState extends State<_SplitTab> {
             ),
             const SizedBox(height: 12),
           ],
-
           OutlinedButton.icon(
             onPressed: _busy ? null : _pickPdf,
             icon: const Icon(Icons.upload_file_rounded),
             label: Text(_selectedPath == null ? 'Pick PDF' : 'Change PDF'),
           ),
           const SizedBox(height: 16),
-
           TextField(
             controller: _pagesCtrl,
             keyboardType: TextInputType.number,
@@ -450,16 +444,15 @@ class _SplitTabState extends State<_SplitTab> {
             ),
           ),
           const SizedBox(height: 16),
-
           FilledButton.icon(
             onPressed: (_busy || _selectedPath == null) ? null : _split,
             icon: _busy
                 ? const SizedBox(
-              width: 18,
-              height: 18,
-              child: CircularProgressIndicator(
-                  strokeWidth: 2, color: Colors.white),
-            )
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: Colors.white),
+                  )
                 : const Icon(Icons.call_split_rounded),
             label: Text(_busy ? 'Splitting…' : 'Split PDF'),
           ),
@@ -478,9 +471,9 @@ class _SplitTabState extends State<_SplitTab> {
 /// [context] must be mounted at the call site — callers are responsible for
 /// checking `context.mounted` immediately before calling this function.
 Future<void> _openOutputPdf(
-    BuildContext context, {
-      required String persistentPath,
-    }) async {
+  BuildContext context, {
+  required String persistentPath,
+}) async {
   final pdfId = PdfIdHelper.fromFilePath(persistentPath);
   final title = PdfIdHelper.titleFromFilePath(persistentPath);
 

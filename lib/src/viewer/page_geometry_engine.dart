@@ -40,10 +40,10 @@ import 'dart:ui' show Size;
 ///   `width / height`.
 class PageGeometryEngine {
   PageGeometryEngine._(
-      this._normalizedOffsets,
-      this.pageCount,
-      this.builtForCrossAxisExtent,
-      );
+    this._normalizedOffsets,
+    this.pageCount,
+    this.builtForCrossAxisExtent,
+  );
 
   /// Length == pageCount + 1. `_normalizedOffsets[i]` = fraction of total
   /// scrollable content extent above page `i` (monotonically increasing,
@@ -75,11 +75,11 @@ class PageGeometryEngine {
   /// [isHorizontalScroll] — selects which page dimension varies along
   /// the scroll axis.
   factory PageGeometryEngine.build(
-      List<Size> pageSizesPts, {
-        required double pageSpacingPx,
-        required double viewportCrossAxisPx,
-        required bool isHorizontalScroll,
-      }) {
+    List<Size> pageSizesPts, {
+    required double pageSpacingPx,
+    required double viewportCrossAxisPx,
+    required bool isHorizontalScroll,
+  }) {
     final n = pageSizesPts.length;
     if (n == 0) {
       return PageGeometryEngine._(<double>[0.0], 0, viewportCrossAxisPx);
@@ -148,7 +148,7 @@ class PageGeometryEngine {
 
     final normTop = (scrollPixels / totalContentExtent).clamp(0.0, 1.0);
     final normBottom =
-    ((scrollPixels + viewportExtent) / totalContentExtent).clamp(0.0, 1.0);
+        ((scrollPixels + viewportExtent) / totalContentExtent).clamp(0.0, 1.0);
 
     var lo = _upperBound(normTop) - 1;
     if (lo < 0) lo = 0;

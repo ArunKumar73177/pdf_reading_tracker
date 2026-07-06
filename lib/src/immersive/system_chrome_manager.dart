@@ -36,8 +36,7 @@ class SystemChromeManager {
     try {
       await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     } catch (e) {
-      debugPrint(
-          '[SystemChromeManager] enterImmersive failed (non-fatal): $e');
+      debugPrint('[SystemChromeManager] enterImmersive failed (non-fatal): $e');
     }
   }
 
@@ -48,8 +47,7 @@ class SystemChromeManager {
     try {
       await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     } catch (e) {
-      debugPrint(
-          '[SystemChromeManager] exitImmersive failed (non-fatal): $e');
+      debugPrint('[SystemChromeManager] exitImmersive failed (non-fatal): $e');
     }
   }
 

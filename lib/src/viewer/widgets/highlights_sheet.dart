@@ -44,18 +44,16 @@ Future<int?> showHighlightsSheet({
 class _TypeMeta {
   const _TypeMeta(this.icon, this.label);
   final IconData icon;
-  final String   label;
+  final String label;
 }
 
 const Map<AnnotationType, _TypeMeta> _typeMeta = {
-  AnnotationType.highlight:
-  _TypeMeta(Icons.highlight_rounded, 'Highlight'),
+  AnnotationType.highlight: _TypeMeta(Icons.highlight_rounded, 'Highlight'),
   AnnotationType.underline:
-  _TypeMeta(Icons.format_underline_rounded, 'Underline'),
+      _TypeMeta(Icons.format_underline_rounded, 'Underline'),
   AnnotationType.strikethrough:
-  _TypeMeta(Icons.format_strikethrough_rounded, 'Strikethrough'),
-  AnnotationType.squiggly:
-  _TypeMeta(Icons.waves_rounded, 'Squiggly'),
+      _TypeMeta(Icons.format_strikethrough_rounded, 'Strikethrough'),
+  AnnotationType.squiggly: _TypeMeta(Icons.waves_rounded, 'Squiggly'),
 };
 
 // ---------------------------------------------------------------------------
@@ -112,8 +110,8 @@ class _HighlightsSheetContentState extends State<_HighlightsSheetContent> {
     // Use SafeNoteDialog (useRootNavigator, owned controller lifecycle)
     // so the TextEditingController is never at risk of being orphaned.
     final result = await showSafeNoteDialog(
-      context:     context,
-      title:       'Note — Page ${h.page + 1}',
+      context: context,
+      title: 'Note — Page ${h.page + 1}',
       initialText: h.note ?? '',
       allowDelete: h.note != null && h.note!.isNotEmpty,
     );
@@ -139,7 +137,7 @@ class _HighlightsSheetContentState extends State<_HighlightsSheetContent> {
             final idx = _items.indexWhere((x) => x.id == h.id);
             if (idx != -1) {
               _items[idx] = _items[idx].copyWith(
-                note:      trimmed,
+                note: trimmed,
                 clearNote: trimmed == null,
               );
             }
@@ -189,8 +187,8 @@ class _HighlightsSheetContentState extends State<_HighlightsSheetContent> {
                 Chip(
                   label: Text(
                     '${_items.length}',
-                    style: tt.labelSmall
-                        ?.copyWith(color: cs.onSecondaryContainer),
+                    style:
+                        tt.labelSmall?.copyWith(color: cs.onSecondaryContainer),
                   ),
                   backgroundColor: cs.secondaryContainer,
                   visualDensity: VisualDensity.compact,
@@ -205,117 +203,116 @@ class _HighlightsSheetContentState extends State<_HighlightsSheetContent> {
             child: _items.isEmpty
                 ? _EmptyState(cs: cs, tt: tt)
                 : ListView.separated(
-              controller: scrollController,
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              itemCount: _items.length,
-              separatorBuilder: (_, __) =>
-              const Divider(height: 1, indent: 72),
-              itemBuilder: (_, i) {
-                final h = _items[i];
-                final isDeleting = _deleting.contains(h.id);
-                final isEditingNote = _editingNote.contains(h.id);
-                final isCurrent = h.page == widget.currentPage;
-                final isBusy = isDeleting || isEditingNote;
-                final hasNote = h.note != null && h.note!.isNotEmpty;
-                final meta = _typeMeta[h.annotationType]!;
-                final dotColor = Color(h.colorValue | 0xFF000000);
+                    controller: scrollController,
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    itemCount: _items.length,
+                    separatorBuilder: (_, __) =>
+                        const Divider(height: 1, indent: 72),
+                    itemBuilder: (_, i) {
+                      final h = _items[i];
+                      final isDeleting = _deleting.contains(h.id);
+                      final isEditingNote = _editingNote.contains(h.id);
+                      final isCurrent = h.page == widget.currentPage;
+                      final isBusy = isDeleting || isEditingNote;
+                      final hasNote = h.note != null && h.note!.isNotEmpty;
+                      final meta = _typeMeta[h.annotationType]!;
+                      final dotColor = Color(h.colorValue | 0xFF000000);
 
-                final preview = h.selectedText.length > 60
-                    ? '${h.selectedText.substring(0, 60)}…'
-                    : h.selectedText;
+                      final preview = h.selectedText.length > 60
+                          ? '${h.selectedText.substring(0, 60)}…'
+                          : h.selectedText;
 
-                return ListTile(
-                  onTap: isBusy
-                      ? null
-                      : () => Navigator.of(context).pop(h.page),
-                  contentPadding: const EdgeInsets.fromLTRB(16, 4, 8, 4),
-                  // ── Leading: colour dot + type icon ─────────────────
-                  leading: CircleAvatar(
-                    backgroundColor: isCurrent
-                        ? cs.primary
-                        : dotColor.withAlpha(229), // 90% opacity
-                    foregroundColor:
-                    isCurrent ? cs.onPrimary : Colors.black87,
-                    child: Icon(meta.icon, size: 18),
-                  ),
-                  // ── Title: type + page ───────────────────────────────
-                  title: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Flexible(
-                        child: Text(
-                          meta.label,
-                          style: tt.bodyLarge?.copyWith(
-                            fontWeight: isCurrent
-                                ? FontWeight.bold
-                                : FontWeight.normal,
+                      return ListTile(
+                        onTap: isBusy
+                            ? null
+                            : () => Navigator.of(context).pop(h.page),
+                        contentPadding: const EdgeInsets.fromLTRB(16, 4, 8, 4),
+                        // ── Leading: colour dot + type icon ─────────────────
+                        leading: CircleAvatar(
+                          backgroundColor: isCurrent
+                              ? cs.primary
+                              : dotColor.withAlpha(229), // 90% opacity
+                          foregroundColor:
+                              isCurrent ? cs.onPrimary : Colors.black87,
+                          child: Icon(meta.icon, size: 18),
+                        ),
+                        // ── Title: type + page ───────────────────────────────
+                        title: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Flexible(
+                              child: Text(
+                                meta.label,
+                                style: tt.bodyLarge?.copyWith(
+                                  fontWeight: isCurrent
+                                      ? FontWeight.bold
+                                      : FontWeight.normal,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              '· Page ${h.page + 1}',
+                              style: tt.bodySmall
+                                  ?.copyWith(color: cs.onSurfaceVariant),
+                            ),
+                            if (hasNote) ...[
+                              const SizedBox(width: 6),
+                              Icon(Icons.sticky_note_2_rounded,
+                                  size: 14, color: cs.primary),
+                            ],
+                          ],
+                        ),
+                        // ── Subtitle: selected-text preview, or the note ─────
+                        subtitle: Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Text(
+                            hasNote ? h.note! : '"$preview"',
+                            style: tt.bodySmall?.copyWith(
+                              color:
+                                  hasNote ? cs.onSurface : cs.onSurfaceVariant,
+                              fontStyle:
+                                  hasNote ? FontStyle.normal : FontStyle.italic,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
                           ),
-                          overflow: TextOverflow.ellipsis,
                         ),
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        '· Page ${h.page + 1}',
-                        style: tt.bodySmall
-                            ?.copyWith(color: cs.onSurfaceVariant),
-                      ),
-                      if (hasNote) ...[
-                        const SizedBox(width: 6),
-                        Icon(Icons.sticky_note_2_rounded,
-                            size: 14, color: cs.primary),
-                      ],
-                    ],
+                        // ── Trailing action row ───────────────────────────
+                        trailing: isBusy
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child:
+                                    CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  // Edit note
+                                  IconButton(
+                                    icon: Icon(
+                                      hasNote
+                                          ? Icons.edit_note_rounded
+                                          : Icons.note_add_outlined,
+                                      color: cs.primary,
+                                    ),
+                                    tooltip: hasNote ? 'Edit note' : 'Add note',
+                                    onPressed: () => _editNote(h),
+                                  ),
+                                  // Delete
+                                  IconButton(
+                                    icon: Icon(Icons.delete_outline,
+                                        color: cs.error),
+                                    tooltip: 'Remove annotation',
+                                    onPressed: () => _delete(h),
+                                  ),
+                                ],
+                              ),
+                      );
+                    },
                   ),
-                  // ── Subtitle: selected-text preview, or the note ─────
-                  subtitle: Padding(
-                    padding: const EdgeInsets.only(top: 2),
-                    child: Text(
-                      hasNote ? h.note! : '"$preview"',
-                      style: tt.bodySmall?.copyWith(
-                        color: hasNote
-                            ? cs.onSurface
-                            : cs.onSurfaceVariant,
-                        fontStyle:
-                        hasNote ? FontStyle.normal : FontStyle.italic,
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  // ── Trailing action row ───────────────────────────
-                  trailing: isBusy
-                      ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child:
-                    CircularProgressIndicator(strokeWidth: 2),
-                  )
-                      : Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // Edit note
-                      IconButton(
-                        icon: Icon(
-                          hasNote
-                              ? Icons.edit_note_rounded
-                              : Icons.note_add_outlined,
-                          color: cs.primary,
-                        ),
-                        tooltip: hasNote ? 'Edit note' : 'Add note',
-                        onPressed: () => _editNote(h),
-                      ),
-                      // Delete
-                      IconButton(
-                        icon: Icon(Icons.delete_outline,
-                            color: cs.error),
-                        tooltip: 'Remove annotation',
-                        onPressed: () => _delete(h),
-                      ),
-                    ],
-                  ),
-                );
-              },
-            ),
           ),
         ],
       ),

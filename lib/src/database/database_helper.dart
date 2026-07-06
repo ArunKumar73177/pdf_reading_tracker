@@ -22,8 +22,8 @@ class DatabaseHelper {
   DatabaseHelper._internal();
   static final DatabaseHelper instance = DatabaseHelper._internal();
 
-  static const String _kDbName    = 'pdf_reading_tracker.db';
-  static const int    _kDbVersion = 8;
+  static const String _kDbName = 'pdf_reading_tracker.db';
+  static const int _kDbVersion = 8;
 
   Database? _database;
 
@@ -34,12 +34,12 @@ class DatabaseHelper {
 
   Future<Database> _openDatabase() async {
     final dbPath = await getDatabasesPath();
-    final path   = join(dbPath, _kDbName);
+    final path = join(dbPath, _kDbName);
     return openDatabase(
       path,
-      version:     _kDbVersion,
-      onCreate:    _onCreate,
-      onUpgrade:   _onUpgrade,
+      version: _kDbVersion,
+      onCreate: _onCreate,
+      onUpgrade: _onUpgrade,
       onConfigure: _onConfigure,
     );
   }
@@ -83,14 +83,14 @@ class DatabaseHelper {
     if (oldVersion < 2) {
       await db.execute(
         'ALTER TABLE ${DatabaseConstants.tableReadingProgress} '
-            'ADD COLUMN ${DatabaseConstants.columnFilePath} TEXT',
+        'ADD COLUMN ${DatabaseConstants.columnFilePath} TEXT',
       );
     }
 
     if (oldVersion < 3) {
       await db.execute(
         'ALTER TABLE ${DatabaseConstants.tableReadingProgress} '
-            'ADD COLUMN ${DatabaseConstants.columnTitle} TEXT',
+        'ADD COLUMN ${DatabaseConstants.columnTitle} TEXT',
       );
     }
 
@@ -114,8 +114,8 @@ class DatabaseHelper {
     }
 
     if (oldVersion < 5) {
-      await db.execute(
-          'DROP TABLE IF EXISTS ${DatabaseConstants.tableHighlights}');
+      await db
+          .execute('DROP TABLE IF EXISTS ${DatabaseConstants.tableHighlights}');
       await db.execute(DatabaseConstants.createHighlightsTable);
       await db.execute(DatabaseConstants.createHighlightsIndex);
     }

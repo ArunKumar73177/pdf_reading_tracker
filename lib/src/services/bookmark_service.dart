@@ -159,10 +159,10 @@ class BookmarkService {
 
 class BookmarkServiceException implements Exception {
   const BookmarkServiceException(
-      this.message, {
-        this.cause,
-        this.stackTrace,
-      });
+    this.message, {
+    this.cause,
+    this.stackTrace,
+  });
 
   final String message;
   final Object? cause;

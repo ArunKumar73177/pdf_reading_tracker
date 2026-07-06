@@ -12,10 +12,10 @@
 /// ```
 sealed class PdfOperationException implements Exception {
   const PdfOperationException(
-      this.message, {
-        this.cause,
-        this.stackTrace,
-      });
+    this.message, {
+    this.cause,
+    this.stackTrace,
+  });
 
   /// Human-readable description of what failed.
   final String message;
@@ -41,10 +41,10 @@ sealed class PdfOperationException implements Exception {
 /// Thrown by [PdfMergeService] when a merge operation cannot be completed.
 final class PdfMergeException extends PdfOperationException {
   const PdfMergeException(
-      super.message, {
-        super.cause,
-        super.stackTrace,
-      });
+    super.message, {
+    super.cause,
+    super.stackTrace,
+  });
 }
 
 /// Thrown when one or more input paths do not exist on disk.
@@ -60,8 +60,8 @@ final class PdfMergeFileNotFoundException extends PdfMergeException {
 final class PdfMergeCorruptFileException extends PdfMergeException {
   const PdfMergeCorruptFileException(this.corruptPath, {super.cause})
       : super(
-    'PDF file appears to be corrupted or password-protected: $corruptPath',
-  );
+          'PDF file appears to be corrupted or password-protected: $corruptPath',
+        );
 
   /// The path of the file that could not be parsed.
   final String corruptPath;
@@ -74,10 +74,10 @@ final class PdfMergeCorruptFileException extends PdfMergeException {
 /// Thrown by [PdfSplitService] when a split operation cannot be completed.
 final class PdfSplitException extends PdfOperationException {
   const PdfSplitException(
-      super.message, {
-        super.cause,
-        super.stackTrace,
-      });
+    super.message, {
+    super.cause,
+    super.stackTrace,
+  });
 }
 
 /// Thrown when the source PDF does not exist on disk.

@@ -86,10 +86,10 @@ class _AppearanceSelectorSheet extends StatelessWidget {
             SegmentedButton<AppearanceMode>(
               segments: _options
                   .map((o) => ButtonSegment(
-                value: o.$1,
-                icon: Icon(o.$2, size: 18),
-                label: Text(o.$3),
-              ))
+                        value: o.$1,
+                        icon: Icon(o.$2, size: 18),
+                        label: Text(o.$3),
+                      ))
                   .toList(growable: false),
               selected: {current},
               showSelectedIcon: false,

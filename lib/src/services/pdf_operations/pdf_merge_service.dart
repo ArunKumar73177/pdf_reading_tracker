@@ -122,7 +122,7 @@ abstract final class PdfMergeService {
         outputPath ?? await _resolveOutputPath(outputFileName);
 
     final result = await Isolate.run(
-          () => _mergeInIsolate(
+      () => _mergeInIsolate(
         _MergeRequest(inputPaths: inputPaths, outputPath: resolvedOutputPath),
       ),
     );

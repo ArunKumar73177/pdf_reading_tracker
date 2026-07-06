@@ -137,7 +137,8 @@ abstract final class PdfSplitService {
     String? outputDir,
     String? baseFileName,
   }) async {
-    if (!File(pdfPath).existsSync()) throw PdfSplitFileNotFoundException(pdfPath);
+    if (!File(pdfPath).existsSync())
+      throw PdfSplitFileNotFoundException(pdfPath);
     if (pagesPerFile < 1) {
       throw const PdfSplitInvalidRangeException('pagesPerFile must be ≥ 1.');
     }
@@ -182,7 +183,8 @@ abstract final class PdfSplitService {
     String? outputDir,
     String? baseFileName,
   }) async {
-    if (!File(pdfPath).existsSync()) throw PdfSplitFileNotFoundException(pdfPath);
+    if (!File(pdfPath).existsSync())
+      throw PdfSplitFileNotFoundException(pdfPath);
     if (ranges.isEmpty) {
       throw const PdfSplitInvalidRangeException(
           'At least one PageRange is required.');
@@ -218,7 +220,7 @@ abstract final class PdfSplitService {
         p.basenameWithoutExtension(pdfPath).replaceAll(RegExp(r'\s+'), '_');
 
     final result = await Isolate.run(
-          () => _splitInIsolate(_SplitRequest(
+      () => _splitInIsolate(_SplitRequest(
         pdfPath: pdfPath,
         ranges: ranges,
         outputDir: resolvedDir,

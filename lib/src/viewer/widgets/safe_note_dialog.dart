@@ -116,7 +116,7 @@ class _SafeNoteDialogState extends State<_SafeNoteDialog> {
   // exactly once in dispose. Never recreated, never shared, never touched
   // from outside this class.
   late final TextEditingController _controller =
-  TextEditingController(text: widget.initialText);
+      TextEditingController(text: widget.initialText);
   late final FocusNode _focusNode = FocusNode();
 
   bool _saving = false;
@@ -155,15 +155,15 @@ class _SafeNoteDialogState extends State<_SafeNoteDialog> {
   /// this is a plain [EditableText] context menu, fully independent of
   /// `SfPdfViewer`'s own overlay.
   Widget _buildContextMenu(
-      BuildContext context,
-      EditableTextState editableTextState,
-      ) {
+    BuildContext context,
+    EditableTextState editableTextState,
+  ) {
     final buttonItems = editableTextState.contextMenuButtonItems
         .where((item) =>
-    item.type == ContextMenuButtonType.cut ||
-        item.type == ContextMenuButtonType.copy ||
-        item.type == ContextMenuButtonType.paste ||
-        item.type == ContextMenuButtonType.selectAll)
+            item.type == ContextMenuButtonType.cut ||
+            item.type == ContextMenuButtonType.copy ||
+            item.type == ContextMenuButtonType.paste ||
+            item.type == ContextMenuButtonType.selectAll)
         .toList(growable: false);
 
     return AdaptiveTextSelectionToolbar.buttonItems(

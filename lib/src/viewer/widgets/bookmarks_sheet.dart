@@ -134,8 +134,8 @@ class _BookmarksSheetContentState extends State<_BookmarksSheetContent> {
                 Chip(
                   label: Text(
                     '${_items.length}',
-                    style: tt.labelSmall
-                        ?.copyWith(color: cs.onSecondaryContainer),
+                    style:
+                        tt.labelSmall?.copyWith(color: cs.onSecondaryContainer),
                   ),
                   backgroundColor: cs.secondaryContainer,
                   visualDensity: VisualDensity.compact,
@@ -150,107 +150,105 @@ class _BookmarksSheetContentState extends State<_BookmarksSheetContent> {
             child: _items.isEmpty
                 ? _EmptyState(cs: cs, tt: tt)
                 : ListView.separated(
-              controller: scrollController,
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              itemCount: _items.length,
-              separatorBuilder: (_, __) =>
-              const Divider(height: 1, indent: 72),
-              itemBuilder: (_, i) {
-                final bm = _items[i];
-                final isDeleting = _deleting.contains(bm.id);
-                final isEditingNote = _editingNote.contains(bm.id);
-                final isCurrent = bm.page == widget.currentPage;
-                final isBusy = isDeleting || isEditingNote;
+                    controller: scrollController,
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    itemCount: _items.length,
+                    separatorBuilder: (_, __) =>
+                        const Divider(height: 1, indent: 72),
+                    itemBuilder: (_, i) {
+                      final bm = _items[i];
+                      final isDeleting = _deleting.contains(bm.id);
+                      final isEditingNote = _editingNote.contains(bm.id);
+                      final isCurrent = bm.page == widget.currentPage;
+                      final isBusy = isDeleting || isEditingNote;
 
-                return ListTile(
-                  onTap: isBusy
-                      ? null
-                      : () => Navigator.of(context).pop(bm.page),
-                  contentPadding: const EdgeInsets.fromLTRB(16, 4, 8, 4),
-                  leading: CircleAvatar(
-                    backgroundColor:
-                    isCurrent ? cs.primary : cs.secondaryContainer,
-                    foregroundColor: isCurrent
-                        ? cs.onPrimary
-                        : cs.onSecondaryContainer,
-                    child: Text(
-                      '${bm.page + 1}',
-                      style: tt.labelMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: isCurrent
-                            ? cs.onPrimary
-                            : cs.onSecondaryContainer,
-                      ),
-                    ),
-                  ),
-                  title: Text(
-                    'Page ${bm.page + 1}',
-                    style: tt.bodyLarge?.copyWith(
-                      fontWeight: isCurrent
-                          ? FontWeight.bold
-                          : FontWeight.normal,
-                    ),
-                  ),
-                  subtitle: bm.note != null && bm.note!.isNotEmpty
-                      ? Text(
-                    bm.note!,
-                    style: tt.bodySmall
-                        ?.copyWith(color: cs.onSurfaceVariant),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  )
-                      : Text(
-                    _formatDate(bm.createdAt),
-                    style:
-                    tt.bodySmall?.copyWith(color: cs.outline),
-                  ),
-                  // ── Trailing action row ───────────────────────────
-                  trailing: isBusy
-                      ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                        strokeWidth: 2),
-                  )
-                      : Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // Edit note
-                      IconButton(
-                        icon: Icon(
-                          bm.note != null && bm.note!.isNotEmpty
-                              ? Icons.edit_note_rounded
-                              : Icons.note_add_outlined,
-                          color: cs.primary,
+                      return ListTile(
+                        onTap: isBusy
+                            ? null
+                            : () => Navigator.of(context).pop(bm.page),
+                        contentPadding: const EdgeInsets.fromLTRB(16, 4, 8, 4),
+                        leading: CircleAvatar(
+                          backgroundColor:
+                              isCurrent ? cs.primary : cs.secondaryContainer,
+                          foregroundColor: isCurrent
+                              ? cs.onPrimary
+                              : cs.onSecondaryContainer,
+                          child: Text(
+                            '${bm.page + 1}',
+                            style: tt.labelMedium?.copyWith(
+                              fontWeight: FontWeight.bold,
+                              color: isCurrent
+                                  ? cs.onPrimary
+                                  : cs.onSecondaryContainer,
+                            ),
+                          ),
                         ),
-                        tooltip: bm.note != null &&
-                            bm.note!.isNotEmpty
-                            ? 'Edit note'
-                            : 'Add note',
-                        onPressed: () => _editNote(bm),
-                      ),
-                      // Delete
-                      IconButton(
-                        icon: Icon(Icons.delete_outline,
-                            color: cs.error),
-                        tooltip: 'Remove bookmark',
-                        onPressed: () => _delete(bm),
-                      ),
-                    ],
+                        title: Text(
+                          'Page ${bm.page + 1}',
+                          style: tt.bodyLarge?.copyWith(
+                            fontWeight:
+                                isCurrent ? FontWeight.bold : FontWeight.normal,
+                          ),
+                        ),
+                        subtitle: bm.note != null && bm.note!.isNotEmpty
+                            ? Text(
+                                bm.note!,
+                                style: tt.bodySmall
+                                    ?.copyWith(color: cs.onSurfaceVariant),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              )
+                            : Text(
+                                _formatDate(bm.createdAt),
+                                style:
+                                    tt.bodySmall?.copyWith(color: cs.outline),
+                              ),
+                        // ── Trailing action row ───────────────────────────
+                        trailing: isBusy
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child:
+                                    CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  // Edit note
+                                  IconButton(
+                                    icon: Icon(
+                                      bm.note != null && bm.note!.isNotEmpty
+                                          ? Icons.edit_note_rounded
+                                          : Icons.note_add_outlined,
+                                      color: cs.primary,
+                                    ),
+                                    tooltip:
+                                        bm.note != null && bm.note!.isNotEmpty
+                                            ? 'Edit note'
+                                            : 'Add note',
+                                    onPressed: () => _editNote(bm),
+                                  ),
+                                  // Delete
+                                  IconButton(
+                                    icon: Icon(Icons.delete_outline,
+                                        color: cs.error),
+                                    tooltip: 'Remove bookmark',
+                                    onPressed: () => _delete(bm),
+                                  ),
+                                ],
+                              ),
+                      );
+                    },
                   ),
-                );
-              },
-            ),
           ),
         ],
       ),
     );
   }
 
-  String _formatDate(DateTime dt) =>
-      '${dt.day.toString().padLeft(2, '0')}/'
-          '${dt.month.toString().padLeft(2, '0')}/'
-          '${dt.year}';
+  String _formatDate(DateTime dt) => '${dt.day.toString().padLeft(2, '0')}/'
+      '${dt.month.toString().padLeft(2, '0')}/'
+      '${dt.year}';
 }
 
 // ---------------------------------------------------------------------------
@@ -258,9 +256,9 @@ class _BookmarksSheetContentState extends State<_BookmarksSheetContent> {
 // ---------------------------------------------------------------------------
 
 Future<String?> _showEditNoteDialog(
-    BuildContext context,
-    Bookmark bookmark,
-    ) async {
+  BuildContext context,
+  Bookmark bookmark,
+) async {
   final ctrl = TextEditingController(text: bookmark.note ?? '');
   final pageLabel = 'Page ${bookmark.page + 1}';
 

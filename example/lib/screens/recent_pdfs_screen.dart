@@ -60,7 +60,7 @@ class _RecentPdfsScreenState extends State<RecentPdfsScreen> {
     if (progress.filePath == null || !File(progress.filePath!).existsSync()) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content:
-        Text('"${progress.title ?? 'PDF'}" could not be found on device.'),
+            Text('"${progress.title ?? 'PDF'}" could not be found on device.'),
         backgroundColor: Theme.of(context).colorScheme.error,
       ));
       return;
@@ -84,7 +84,7 @@ class _RecentPdfsScreenState extends State<RecentPdfsScreen> {
         title: const Text('Remove from history?'),
         content: Text(
           'Reading progress and bookmarks for '
-              '"${progress.title ?? 'this PDF'}" will be deleted.',
+          '"${progress.title ?? 'this PDF'}" will be deleted.',
         ),
         actions: [
           TextButton(
@@ -116,20 +116,20 @@ class _RecentPdfsScreenState extends State<RecentPdfsScreen> {
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _recents.isEmpty
-          ? const _EmptyHistory()
-          : RefreshIndicator(
-        onRefresh: _load,
-        child: ListView.separated(
-          padding: const EdgeInsets.all(16),
-          itemCount: _recents.length,
-          separatorBuilder: (_, __) => const SizedBox(height: 10),
-          itemBuilder: (_, i) => _RecentCard(
-            progress: _recents[i],
-            onResume: () => _openPdf(_recents[i]),
-            onDelete: () => _deleteHistory(_recents[i]),
-          ),
-        ),
-      ),
+              ? const _EmptyHistory()
+              : RefreshIndicator(
+                  onRefresh: _load,
+                  child: ListView.separated(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: _recents.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 10),
+                    itemBuilder: (_, i) => _RecentCard(
+                      progress: _recents[i],
+                      onResume: () => _openPdf(_recents[i]),
+                      onDelete: () => _deleteHistory(_recents[i]),
+                    ),
+                  ),
+                ),
     );
   }
 }
@@ -185,8 +185,8 @@ class _RecentCard extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
 
-    final fileExists = progress.filePath == null ||
-        File(progress.filePath!).existsSync();
+    final fileExists =
+        progress.filePath == null || File(progress.filePath!).existsSync();
     final title = progress.title ?? 'Unknown PDF';
     final pct = progress.progressPct;
     final hasPages = progress.totalPages > 0;
@@ -241,8 +241,8 @@ class _RecentCard extends StatelessWidget {
                       const SizedBox(height: 3),
                       Text(
                         _relativeTime(progress.lastReadAt),
-                        style: tt.bodySmall
-                            ?.copyWith(color: cs.onSurfaceVariant),
+                        style:
+                            tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
                       ),
                     ],
                   ),
@@ -255,7 +255,7 @@ class _RecentCard extends StatelessWidget {
                   color: cs.onSurfaceVariant,
                   padding: EdgeInsets.zero,
                   constraints:
-                  const BoxConstraints(minWidth: 36, minHeight: 36),
+                      const BoxConstraints(minWidth: 36, minHeight: 36),
                   onPressed: onDelete,
                 ),
               ],
@@ -316,7 +316,7 @@ class _RecentCard extends StatelessWidget {
                   onPressed: onResume,
                   style: FilledButton.styleFrom(
                     padding:
-                    const EdgeInsets.symmetric(horizontal: 20, vertical: 0),
+                        const EdgeInsets.symmetric(horizontal: 20, vertical: 0),
                     minimumSize: const Size(0, 36),
                   ),
                   child: Row(
@@ -383,8 +383,19 @@ class _RecentCard extends StatelessWidget {
     if (diff.inDays == 1) return 'Yesterday';
     if (diff.inDays < 7) return '${diff.inDays} days ago';
     const months = [
-      '', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+      '',
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
     ];
     return '${dt.day} ${months[dt.month]} ${dt.year}';
   }
@@ -479,8 +490,8 @@ class _StatusChip extends StatelessWidget {
           Icon(icon, size: 14, color: color),
           const SizedBox(width: 5),
           Text(label,
-              style: tt.labelSmall?.copyWith(
-                  color: color, fontWeight: FontWeight.w600)),
+              style: tt.labelSmall
+                  ?.copyWith(color: color, fontWeight: FontWeight.w600)),
         ],
       ),
     );

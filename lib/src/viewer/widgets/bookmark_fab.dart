@@ -20,9 +20,9 @@ class BookmarkFab extends StatelessWidget {
       heroTag: 'pdf_tracker_bookmark_fab',
       tooltip: isBookmarked ? 'Page already bookmarked' : 'Bookmark this page',
       backgroundColor:
-      isBookmarked ? cs.primaryContainer : cs.secondaryContainer,
+          isBookmarked ? cs.primaryContainer : cs.secondaryContainer,
       foregroundColor:
-      isBookmarked ? cs.onPrimaryContainer : cs.onSecondaryContainer,
+          isBookmarked ? cs.onPrimaryContainer : cs.onSecondaryContainer,
       onPressed: isBookmarked ? null : onPressed,
       child: Icon(
         isBookmarked ? Icons.bookmark_rounded : Icons.bookmark_add_outlined,

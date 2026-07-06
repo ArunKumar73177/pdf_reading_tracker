@@ -34,8 +34,9 @@ class HighlightService {
     } on DatabaseException catch (e, st) {
       throw HighlightServiceException(
         'addHighlight failed for pdfId="${highlight.pdfId}", '
-            'page=${highlight.page}.',
-        cause: e, stackTrace: st,
+        'page=${highlight.page}.',
+        cause: e,
+        stackTrace: st,
       );
     }
   }
@@ -44,17 +45,19 @@ class HighlightService {
   /// Returns `true` if a row was updated.
   Future<bool> updateNote(int id, String? note) async {
     try {
-      final db       = await _db;
+      final db = await _db;
       final affected = await db.update(
         DatabaseConstants.tableHighlights,
         {DatabaseConstants.columnNote: note},
-        where:     '${DatabaseConstants.columnId} = ?',
+        where: '${DatabaseConstants.columnId} = ?',
         whereArgs: [id],
       );
       return affected > 0;
     } on DatabaseException catch (e, st) {
       throw HighlightServiceException(
-        'updateNote failed for id=$id.', cause: e, stackTrace: st,
+        'updateNote failed for id=$id.',
+        cause: e,
+        stackTrace: st,
       );
     }
   }
@@ -62,17 +65,19 @@ class HighlightService {
   /// Updates the [colorValue] of a highlight.
   Future<bool> updateColor(int id, int colorValue) async {
     try {
-      final db       = await _db;
+      final db = await _db;
       final affected = await db.update(
         DatabaseConstants.tableHighlights,
         {DatabaseConstants.columnColorValue: colorValue},
-        where:     '${DatabaseConstants.columnId} = ?',
+        where: '${DatabaseConstants.columnId} = ?',
         whereArgs: [id],
       );
       return affected > 0;
     } on DatabaseException catch (e, st) {
       throw HighlightServiceException(
-        'updateColor failed for id=$id.', cause: e, stackTrace: st,
+        'updateColor failed for id=$id.',
+        cause: e,
+        stackTrace: st,
       );
     }
   }
@@ -81,17 +86,19 @@ class HighlightService {
   /// Returns `true` if a row was updated.
   Future<bool> updateAnnotationType(int id, AnnotationType type) async {
     try {
-      final db       = await _db;
+      final db = await _db;
       final affected = await db.update(
         DatabaseConstants.tableHighlights,
         {DatabaseConstants.columnAnnotationType: type.dbValue},
-        where:     '${DatabaseConstants.columnId} = ?',
+        where: '${DatabaseConstants.columnId} = ?',
         whereArgs: [id],
       );
       return affected > 0;
     } on DatabaseException catch (e, st) {
       throw HighlightServiceException(
-        'updateAnnotationType failed for id=$id.', cause: e, stackTrace: st,
+        'updateAnnotationType failed for id=$id.',
+        cause: e,
+        stackTrace: st,
       );
     }
   }
@@ -103,24 +110,26 @@ class HighlightService {
   /// Returns all highlights for [pdfId] ordered by page ascending.
   Future<List<Highlight>> getHighlights(String pdfId) async {
     try {
-      final db   = await _db;
+      final db = await _db;
       final rows = await db.query(
         DatabaseConstants.tableHighlights,
-        where:     '${DatabaseConstants.columnPdfId} = ?',
+        where: '${DatabaseConstants.columnPdfId} = ?',
         whereArgs: [pdfId],
-        orderBy:   '${DatabaseConstants.columnPage} ASC, '
+        orderBy: '${DatabaseConstants.columnPage} ASC, '
             '${DatabaseConstants.columnCreatedAt} ASC',
       );
       return rows.map(Highlight.fromMap).toList(growable: false);
     } on DatabaseException catch (e, st) {
       throw HighlightServiceException(
         'getHighlights failed for pdfId="$pdfId".',
-        cause: e, stackTrace: st,
+        cause: e,
+        stackTrace: st,
       );
     } catch (e, st) {
       throw HighlightServiceException(
         'getHighlights — deserialisation failed for pdfId="$pdfId".',
-        cause: e, stackTrace: st,
+        cause: e,
+        stackTrace: st,
       );
     }
   }
@@ -132,16 +141,18 @@ class HighlightService {
   /// Deletes the highlight identified by [id]. Returns `true` if deleted.
   Future<bool> removeHighlight(int id) async {
     try {
-      final db       = await _db;
+      final db = await _db;
       final affected = await db.delete(
         DatabaseConstants.tableHighlights,
-        where:     '${DatabaseConstants.columnId} = ?',
+        where: '${DatabaseConstants.columnId} = ?',
         whereArgs: [id],
       );
       return affected > 0;
     } on DatabaseException catch (e, st) {
       throw HighlightServiceException(
-        'removeHighlight failed for id=$id.', cause: e, stackTrace: st,
+        'removeHighlight failed for id=$id.',
+        cause: e,
+        stackTrace: st,
       );
     }
   }
@@ -152,14 +163,15 @@ class HighlightService {
       final db = await _db;
       await db.delete(
         DatabaseConstants.tableHighlights,
-        where:     '${DatabaseConstants.columnPdfId} = ? '
+        where: '${DatabaseConstants.columnPdfId} = ? '
             'AND ${DatabaseConstants.columnPage} = ?',
         whereArgs: [pdfId, page],
       );
     } on DatabaseException catch (e, st) {
       throw HighlightServiceException(
         'clearHighlightsOnPage failed for pdfId="$pdfId", page=$page.',
-        cause: e, stackTrace: st,
+        cause: e,
+        stackTrace: st,
       );
     }
   }
@@ -170,13 +182,14 @@ class HighlightService {
       final db = await _db;
       await db.delete(
         DatabaseConstants.tableHighlights,
-        where:     '${DatabaseConstants.columnPdfId} = ?',
+        where: '${DatabaseConstants.columnPdfId} = ?',
         whereArgs: [pdfId],
       );
     } on DatabaseException catch (e, st) {
       throw HighlightServiceException(
         'clearHighlights failed for pdfId="$pdfId".',
-        cause: e, stackTrace: st,
+        cause: e,
+        stackTrace: st,
       );
     }
   }
@@ -188,7 +201,9 @@ class HighlightService {
       await db.delete(DatabaseConstants.tableHighlights);
     } on DatabaseException catch (e, st) {
       throw HighlightServiceException(
-        'clearAllHighlights failed.', cause: e, stackTrace: st,
+        'clearAllHighlights failed.',
+        cause: e,
+        stackTrace: st,
       );
     }
   }
@@ -200,13 +215,13 @@ class HighlightService {
 
 class HighlightServiceException implements Exception {
   const HighlightServiceException(
-      this.message, {
-        this.cause,
-        this.stackTrace,
-      });
+    this.message, {
+    this.cause,
+    this.stackTrace,
+  });
 
-  final String      message;
-  final Object?     cause;
+  final String message;
+  final Object? cause;
   final StackTrace? stackTrace;
 
   @override

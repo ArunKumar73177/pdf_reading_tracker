@@ -63,7 +63,8 @@ class AppearanceController extends ChangeNotifier with WidgetsBindingObserver {
   ThemeData get themeData => AppearanceThemeBuilder.build(effectiveBrightness);
 
   /// Convenience accessor for the reader-chrome colour tokens.
-  ReaderColors get readerColors => ReaderColors.forBrightness(effectiveBrightness);
+  ReaderColors get readerColors =>
+      ReaderColors.forBrightness(effectiveBrightness);
 
   /// Selects [mode] and persists the choice. No-op if [mode] is already
   /// active.

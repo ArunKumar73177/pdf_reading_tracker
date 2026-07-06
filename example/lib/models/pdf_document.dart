@@ -43,7 +43,7 @@ class PdfDocument {
 
 const List<PdfDocument> kPdfCatalogue = [
   PdfDocument(
-    id: 'sample_pdf_v1',               // ← matches old kSamplePdfId exactly
+    id: 'sample_pdf_v1', // ← matches old kSamplePdfId exactly
     title: 'Clean Architecture',
     subtitle: 'Robert C. Martin — Software craftsmanship',
     assetPath: 'assets/sample.pdf',

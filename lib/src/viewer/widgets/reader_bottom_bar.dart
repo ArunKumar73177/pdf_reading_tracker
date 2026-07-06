@@ -173,12 +173,11 @@ class _ReaderProgressOverlayState extends State<ReaderProgressOverlay> {
               borderRadius: BorderRadius.circular(AppRadius.pill),
               child: Container(
                 height: 44,
-                padding:
-                const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
                 decoration: BoxDecoration(
                   color: rc.overlayBackground,
                   borderRadius:
-                  const BorderRadius.all(Radius.circular(AppRadius.pill)),
+                      const BorderRadius.all(Radius.circular(AppRadius.pill)),
                 ),
                 child: Row(
                   children: [
@@ -222,8 +221,7 @@ class _ReaderProgressOverlayState extends State<ReaderProgressOverlay> {
                       const SizedBox(width: AppSpacing.xs + 2),
                       Text(pct,
                           style: TextStyle(
-                              color: rc.overlayLabelSecondary,
-                              fontSize: 11)),
+                              color: rc.overlayLabelSecondary, fontSize: 11)),
                     ],
 
                     // ── Saving spinner ────────────────────────────────
@@ -231,8 +229,7 @@ class _ReaderProgressOverlayState extends State<ReaderProgressOverlay> {
                       opacity: widget.isSaving ? 1.0 : 0.0,
                       duration: AppDurations.medium,
                       child: Padding(
-                        padding:
-                        const EdgeInsets.only(left: AppSpacing.sm),
+                        padding: const EdgeInsets.only(left: AppSpacing.sm),
                         child: SizedBox(
                           width: 10,
                           height: 10,

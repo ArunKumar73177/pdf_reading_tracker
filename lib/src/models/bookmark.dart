@@ -103,7 +103,7 @@ class Bookmark {
     } catch (e) {
       throw FormatException(
         'Bookmark.fromMap failed — check column names and types. '
-            'Cause: $e\nRow: $map',
+        'Cause: $e\nRow: $map',
       );
     }
   }

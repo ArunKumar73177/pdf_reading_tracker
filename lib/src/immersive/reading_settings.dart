@@ -56,19 +56,19 @@ class ReadingSettings {
     return ReadingSettings(
       immersiveModeEnabled: immersiveModeEnabled ?? this.immersiveModeEnabled,
       keepScreenAwakeEnabled:
-      keepScreenAwakeEnabled ?? this.keepScreenAwakeEnabled,
+          keepScreenAwakeEnabled ?? this.keepScreenAwakeEnabled,
       autoHideControlsEnabled:
-      autoHideControlsEnabled ?? this.autoHideControlsEnabled,
+          autoHideControlsEnabled ?? this.autoHideControlsEnabled,
       dndEnabled: dndEnabled ?? this.dndEnabled,
     );
   }
 
   Map<String, dynamic> toJson() => <String, dynamic>{
-    'immersiveModeEnabled': immersiveModeEnabled,
-    'keepScreenAwakeEnabled': keepScreenAwakeEnabled,
-    'autoHideControlsEnabled': autoHideControlsEnabled,
-    'dndEnabled': dndEnabled,
-  };
+        'immersiveModeEnabled': immersiveModeEnabled,
+        'keepScreenAwakeEnabled': keepScreenAwakeEnabled,
+        'autoHideControlsEnabled': autoHideControlsEnabled,
+        'dndEnabled': dndEnabled,
+      };
 
   factory ReadingSettings.fromJson(Map<String, dynamic> json) {
     const fallback = ReadingSettings.defaults();
@@ -95,11 +95,11 @@ class ReadingSettings {
 
   @override
   int get hashCode => Object.hash(
-    immersiveModeEnabled,
-    keepScreenAwakeEnabled,
-    autoHideControlsEnabled,
-    dndEnabled,
-  );
+        immersiveModeEnabled,
+        keepScreenAwakeEnabled,
+        autoHideControlsEnabled,
+        dndEnabled,
+      );
 
   @override
   String toString() => 'ReadingSettings('

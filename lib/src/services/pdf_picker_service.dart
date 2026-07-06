@@ -90,8 +90,8 @@ abstract final class PdfPickerService {
     if (sourcePath == null) {
       throw const PdfPickerException(
         'File path could not be resolved. '
-            'On some platforms withData must be true — '
-            'check file_picker configuration.',
+        'On some platforms withData must be true — '
+        'check file_picker configuration.',
       );
     }
 

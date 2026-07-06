@@ -32,7 +32,7 @@ class _PdfSearchBarState extends State<PdfSearchBar> {
   @override
   void initState() {
     super.initState();
-    _textCtrl  = TextEditingController(text: widget.searchController.query);
+    _textCtrl = TextEditingController(text: widget.searchController.query);
     _focusNode = FocusNode();
     // Auto-focus when the search bar first appears.
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -65,30 +65,29 @@ class _PdfSearchBarState extends State<PdfSearchBar> {
 
     return Container(
       height: 56,
-      color:  cs.surfaceContainerLow,
+      color: cs.surfaceContainerLow,
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
       child: Row(
         children: [
           // ── Search field ─────────────────────────────────────────────
           Expanded(
             child: TextField(
-              controller:  _textCtrl,
-              focusNode:   _focusNode,
+              controller: _textCtrl,
+              focusNode: _focusNode,
               textInputAction: TextInputAction.search,
               onSubmitted: _onSubmitted,
               style: tt.bodyMedium,
               decoration: InputDecoration(
-                hintText:     'Search in document…',
-                hintStyle:    tt.bodyMedium
-                    ?.copyWith(color: cs.onSurfaceVariant),
-                filled:        true,
-                fillColor:     cs.surfaceContainerHigh,
-                contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 14, vertical: 0),
-                isDense:       true,
+                hintText: 'Search in document…',
+                hintStyle: tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
+                filled: true,
+                fillColor: cs.surfaceContainerHigh,
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 0),
+                isDense: true,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(24),
-                  borderSide:   BorderSide.none,
+                  borderSide: BorderSide.none,
                 ),
                 prefixIcon: Icon(Icons.search_rounded,
                     size: 20, color: cs.onSurfaceVariant),
@@ -99,7 +98,7 @@ class _PdfSearchBarState extends State<PdfSearchBar> {
                       return const SizedBox.shrink();
                     }
                     return IconButton(
-                      icon:    const Icon(Icons.close_rounded, size: 18),
+                      icon: const Icon(Icons.close_rounded, size: 18),
                       tooltip: 'Clear search',
                       onPressed: _onClear,
                     );
@@ -121,7 +120,7 @@ class _PdfSearchBarState extends State<PdfSearchBar> {
                 return Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 8),
                   child: SizedBox(
-                    width:  18,
+                    width: 18,
                     height: 18,
                     child: CircularProgressIndicator(
                       strokeWidth: 2,
@@ -134,12 +133,12 @@ class _PdfSearchBarState extends State<PdfSearchBar> {
               if (!sc.hasActiveSearch) return const SizedBox.shrink();
 
               return _SearchResultControls(
-                current:    sc.currentIndex,
-                total:      sc.totalCount,
+                current: sc.currentIndex,
+                total: sc.totalCount,
                 onPrevious: sc.previousResult,
-                onNext:     sc.nextResult,
-                cs:         cs,
-                tt:         tt,
+                onNext: sc.nextResult,
+                cs: cs,
+                tt: tt,
               );
             },
           ),
@@ -163,12 +162,12 @@ class _SearchResultControls extends StatelessWidget {
     required this.tt,
   });
 
-  final int          current;
-  final int          total;
+  final int current;
+  final int total;
   final VoidCallback onPrevious;
   final VoidCallback onNext;
-  final ColorScheme  cs;
-  final TextTheme    tt;
+  final ColorScheme cs;
+  final TextTheme tt;
 
   @override
   Widget build(BuildContext context) {
@@ -181,17 +180,13 @@ class _SearchResultControls extends StatelessWidget {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
           decoration: BoxDecoration(
-            color:        hasResults
-                ? cs.primaryContainer
-                : cs.errorContainer,
+            color: hasResults ? cs.primaryContainer : cs.errorContainer,
             borderRadius: BorderRadius.circular(12),
           ),
           child: Text(
             hasResults ? '$current / $total' : 'No results',
             style: tt.labelSmall?.copyWith(
-              color: hasResults
-                  ? cs.onPrimaryContainer
-                  : cs.onErrorContainer,
+              color: hasResults ? cs.onPrimaryContainer : cs.onErrorContainer,
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -200,16 +195,16 @@ class _SearchResultControls extends StatelessWidget {
         if (hasResults) ...[
           // Previous
           IconButton(
-            icon:     const Icon(Icons.keyboard_arrow_up_rounded),
+            icon: const Icon(Icons.keyboard_arrow_up_rounded),
             iconSize: 22,
-            tooltip:  'Previous result',
+            tooltip: 'Previous result',
             onPressed: total > 0 ? onPrevious : null,
           ),
           // Next
           IconButton(
-            icon:     const Icon(Icons.keyboard_arrow_down_rounded),
+            icon: const Icon(Icons.keyboard_arrow_down_rounded),
             iconSize: 22,
-            tooltip:  'Next result',
+            tooltip: 'Next result',
             onPressed: total > 0 ? onNext : null,
           ),
         ],

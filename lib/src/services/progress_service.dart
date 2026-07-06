@@ -159,8 +159,7 @@ class ProgressService {
       if (rows.isNotEmpty) {
         final existing = ReadingProgress.fromMap(rows.first);
         // Keep filePath in sync if the user moved and re-picked the file.
-        if (onDeviceFilePath != null &&
-            existing.filePath != onDeviceFilePath) {
+        if (onDeviceFilePath != null && existing.filePath != onDeviceFilePath) {
           final updated = existing.copyWith(filePath: onDeviceFilePath);
           await _upsert(updated);
           return updated;

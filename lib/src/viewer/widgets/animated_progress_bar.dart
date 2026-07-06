@@ -30,14 +30,14 @@ class AnimatedProgressBar extends StatelessWidget {
   const AnimatedProgressBar({
     super.key,
     required this.progressPct,
-    this.height            = 8.0,
-    this.showLabel         = true,
+    this.height = 8.0,
+    this.showLabel = true,
     this.animationDuration = const Duration(milliseconds: 400),
-    this.animationCurve    = Curves.easeOutCubic,
+    this.animationCurve = Curves.easeOutCubic,
   }) : assert(
-  progressPct >= 0.0 && progressPct <= 100.0,
-  'progressPct must be in [0.0, 100.0]',
-  );
+          progressPct >= 0.0 && progressPct <= 100.0,
+          'progressPct must be in [0.0, 100.0]',
+        );
 
   /// Completion percentage in [0.0, 100.0].
   final double progressPct;
@@ -59,8 +59,7 @@ class AnimatedProgressBar extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
 
     final gradientStart = cs.primary;
-    final gradientEnd   =
-        Color.lerp(cs.primary, cs.tertiary, 0.55) ?? cs.primary;
+    final gradientEnd = Color.lerp(cs.primary, cs.tertiary, 0.55) ?? cs.primary;
 
     // Issue 6: cs.surfaceContainerHighest has no .withOpacity call —
     // used directly as the track color.
@@ -68,16 +67,16 @@ class AnimatedProgressBar extends StatelessWidget {
       child: LayoutBuilder(
         builder: (context, constraints) {
           final totalWidth = constraints.maxWidth;
-          final fillWidth  = (progressPct / 100.0) * totalWidth;
+          final fillWidth = (progressPct / 100.0) * totalWidth;
 
           return Stack(
             children: [
               // ── Track ──────────────────────────────────────────────
               Container(
-                width:  totalWidth,
+                width: totalWidth,
                 height: height,
                 decoration: BoxDecoration(
-                  color:        cs.surfaceContainerHighest,
+                  color: cs.surfaceContainerHighest,
                   borderRadius: BorderRadius.circular(height / 2),
                 ),
               ),
@@ -86,15 +85,15 @@ class AnimatedProgressBar extends StatelessWidget {
               // No boxShadow: see class-level doc comment.
               AnimatedContainer(
                 duration: animationDuration,
-                curve:    animationCurve,
-                width:    fillWidth.clamp(0.0, totalWidth),
-                height:   height,
+                curve: animationCurve,
+                width: fillWidth.clamp(0.0, totalWidth),
+                height: height,
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(height / 2),
                   gradient: LinearGradient(
                     colors: [gradientStart, gradientEnd],
-                    begin:  Alignment.centerLeft,
-                    end:    Alignment.centerRight,
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
                   ),
                 ),
               ),
@@ -124,24 +123,24 @@ class _ProgressLabel extends StatelessWidget {
   const _ProgressLabel({required this.progressPct, required this.color});
 
   final double progressPct;
-  final Color  color;
+  final Color color;
 
   @override
   Widget build(BuildContext context) {
     final tt = Theme.of(context).textTheme;
     return RepaintBoundary(
       child: AnimatedSwitcher(
-        duration:          const Duration(milliseconds: 280),
+        duration: const Duration(milliseconds: 280),
         transitionBuilder: (child, anim) =>
             FadeTransition(opacity: anim, child: child),
         child: Text(
           // Issue 6 / Issue 4: toStringAsFixed(0) reduces cross-fade
           // frequency from every 0.1% change to every 1% change.
-          key:   ValueKey(progressPct.toStringAsFixed(0)),
+          key: ValueKey(progressPct.toStringAsFixed(0)),
           '${progressPct.toStringAsFixed(1)}%',
           style: tt.labelSmall?.copyWith(
-            color:         color,
-            fontWeight:    FontWeight.w700,
+            color: color,
+            fontWeight: FontWeight.w700,
             letterSpacing: 0,
           ),
         ),

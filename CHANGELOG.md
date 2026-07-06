@@ -1,132 +1,47 @@
-# Changelog
-
-## 3.0.0
+## 4.0.0
 
 ### 🚀 Major Release
 
-This release introduces a complete migration to Syncfusion PDF Viewer and significantly expands the package from a reading-progress tracker into a full-featured PDF reader and annotation solution.
-
----
-
-### 🔥 Major Architecture Changes
-
-* Replaced ALH PDF View with Syncfusion PDF Viewer.
-* Reworked PDF rendering architecture.
-* Improved rendering reliability and maintainability.
-* Simplified dependency management by removing JitPack requirements.
-* Improved overall package structure for long-term scalability.
-
----
+Continued evolution of the package's appearance system, page-detection engine, and annotation reliability introduced in 3.0.0.
 
 ### ✨ Added
 
-#### PDF Reading
-
-* Reading Progress Tracking
-* Continue Reading
-* Recent PDFs Dashboard
-* Jump To Page Navigation
-* Multi-PDF Support
-* Persistent Reading Position
-
-#### User PDF Management
-
-* Import PDFs from device storage
-* Persistent PDF Library
-* Stable PDF ID generation
-* Automatic PDF restoration after app restart
-
-#### Search
-
-* Built-in PDF Text Search
-* Search Navigation
-* Search Result Highlighting
-
-#### Bookmarks
-
-* Bookmark Creation
-* Bookmark Removal
-* Bookmark Notes
-* Persistent Bookmark Storage
-
-#### Annotations
-
-* Highlight Annotations
-* Underline Annotations
-* Strikethrough Annotations
-* Squiggly Annotations
-* Annotation Persistence
-* Annotation Restoration
-
-#### Notes
-
-* Text-linked Notes
-* Edit Notes
-* Delete Notes
-* Jump To Note
-* Persistent Note Storage
-
-#### PDF Operations
-
-* PDF Merge
-* PDF Split
-* Typed Exception Handling
-
----
+- Full Light / Dark / Follow-System appearance mode
+- `ReaderColors` theme extension and centralized design tokens
+- Appearance selector sheet with Material 3 segmented control
 
 ### ⚡ Improvements
 
-* Improved Reading Progress Tracking
-* Improved Continue Reading Experience
-* Improved Recent PDFs Workflow
-* Improved PDF Loading Performance
-* Improved Bookmark Management
-* Improved Annotation Restoration
-* Improved Database Structure
-* Improved Storage Efficiency
-* Improved Offline Persistence
-* Improved User PDF Workflow
-
----
+- Two-layer page detection engine: exact visible-area detection using real per-page aspect ratios, with a uniform-height midpoint fallback
+- Auto-hiding progress overlay after page changes
+- Scoped `ListenableBuilder` usage in place of broad `setState` calls to reduce rebuilds
 
 ### 🛠 Fixed
 
-* Fixed File Not Found issues caused by temporary file picker paths.
-* Fixed reading progress persistence issues.
-* Fixed bookmark restoration issues.
-* Fixed PDF reopening issues.
-* Fixed annotation restoration race conditions.
-* Fixed dialog lifecycle issues.
-* Fixed TextEditingController disposal issues.
-* Fixed duplicate PDF cache storage.
-* Fixed multiple persistence edge cases.
+- Redundant note button duplicating the post-commit workflow
+- Notes saving against the wrong page (now authoritative on the text line's page number rather than scroll heuristics)
+- Search compile error from an invalid `TextSearchOption` value
+- Progress overlay flicker (converted to a timer-free stateless widget)
+- Page-change race condition between `NotificationListener` and Syncfusion state
+- Missing visual indicators for annotated highlights with notes
+- Excessive rebuilds from overly broad `Listenable.merge` scopes
+- Resource leak risks across controllers and focus nodes
+- `flutter analyze` deprecation warnings (including `withOpacity` usages)
 
----
+### Migration Notes
 
-### 💾 Storage Optimizations
+No public API changes. Existing integrations using `PdfReadingTrackerViewer` and the static `PdfReadingTracker` API continue to work without modification.
 
-* Automatic cleanup of temporary imported PDFs.
-* Reduced duplicate file storage.
-* Lightweight SQLite schema.
-* Efficient annotation storage.
-* Efficient note storage.
+### Breaking Changes
 
----
-
-### 🏗 Internal
-
-* Added Highlight APIs.
-* Added Note APIs.
-* Added Search Controller.
-* Added Annotation Infrastructure.
-* Extended SQLite Schema.
-* Improved Service Architecture.
-* Improved Persistence Layer.
-
----
+None.
 
 ### Known Limitations
 
-* Reading progress currently relies on Syncfusion page-change events.
-* Dominant page detection is planned for a future release.
-* Advanced search customization may be expanded in future versions.
+- Dominant page detection continues to rely on a combination of page-change events and geometry heuristics; further refinement is ongoing.
+- Native swipe-threshold page snapping is not yet available.
+
+---
+
+## 3.0.0
+[... existing 3.0.0 entry unchanged below this line ...]

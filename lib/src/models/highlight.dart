@@ -28,10 +28,14 @@ enum AnnotationType {
   /// compatibility with pre-v6 rows that have no annotation_type column.
   static AnnotationType fromDbValue(String? value) {
     switch (value) {
-      case 'underline':     return AnnotationType.underline;
-      case 'strikethrough': return AnnotationType.strikethrough;
-      case 'squiggly':      return AnnotationType.squiggly;
-      default:              return AnnotationType.highlight;
+      case 'underline':
+        return AnnotationType.underline;
+      case 'strikethrough':
+        return AnnotationType.strikethrough;
+      case 'squiggly':
+        return AnnotationType.squiggly;
+      default:
+        return AnnotationType.highlight;
     }
   }
 }
@@ -47,16 +51,21 @@ enum AnnotationType {
 abstract final class AnnotationColors {
   AnnotationColors._();
 
-  static const int yellow  = 0x99FFEB3B;
-  static const int green   = 0x9966BB6A;
-  static const int blue    = 0x9942A5F5;
-  static const int pink    = 0x99EC407A;
-  static const int orange  = 0x99FFA726;
-  static const int purple  = 0x99AB47BC;
+  static const int yellow = 0x99FFEB3B;
+  static const int green = 0x9966BB6A;
+  static const int blue = 0x9942A5F5;
+  static const int pink = 0x99EC407A;
+  static const int orange = 0x99FFA726;
+  static const int purple = 0x99AB47BC;
 
   /// Ordered list used by the color picker in [AnnotationActionBar].
   static const List<int> palette = [
-    yellow, green, blue, pink, orange, purple,
+    yellow,
+    green,
+    blue,
+    pink,
+    orange,
+    purple,
   ];
 }
 
@@ -136,14 +145,14 @@ class Highlight {
     String? note,
   }) {
     return Highlight(
-      pdfId:          pdfId,
-      page:           page,
-      selectedText:   selectedText,
-      rectList:       rectList,
-      colorValue:     colorValue,
+      pdfId: pdfId,
+      page: page,
+      selectedText: selectedText,
+      rectList: rectList,
+      colorValue: colorValue,
       annotationType: annotationType,
-      createdAt:      DateTime.now().toUtc(),
-      note:           note,
+      createdAt: DateTime.now().toUtc(),
+      note: note,
     );
   }
 
@@ -152,27 +161,27 @@ class Highlight {
   // ---------------------------------------------------------------------------
 
   Highlight copyWith({
-    int?                 id,
-    String?              pdfId,
-    int?                 page,
-    String?              selectedText,
+    int? id,
+    String? pdfId,
+    int? page,
+    String? selectedText,
     List<HighlightRect>? rectList,
-    int?                 colorValue,
-    AnnotationType?      annotationType,
-    DateTime?            createdAt,
-    String?              note,
-    bool                 clearNote = false,
+    int? colorValue,
+    AnnotationType? annotationType,
+    DateTime? createdAt,
+    String? note,
+    bool clearNote = false,
   }) {
     return Highlight(
-      id:             id             ?? this.id,
-      pdfId:          pdfId          ?? this.pdfId,
-      page:           page           ?? this.page,
-      selectedText:   selectedText   ?? this.selectedText,
-      rectList:       rectList       ?? this.rectList,
-      colorValue:     colorValue     ?? this.colorValue,
+      id: id ?? this.id,
+      pdfId: pdfId ?? this.pdfId,
+      page: page ?? this.page,
+      selectedText: selectedText ?? this.selectedText,
+      rectList: rectList ?? this.rectList,
+      colorValue: colorValue ?? this.colorValue,
       annotationType: annotationType ?? this.annotationType,
-      createdAt:      createdAt      ?? this.createdAt,
-      note:           clearNote ? null : (note ?? this.note),
+      createdAt: createdAt ?? this.createdAt,
+      note: clearNote ? null : (note ?? this.note),
     );
   }
 
@@ -183,26 +192,25 @@ class Highlight {
   Map<String, dynamic> toMap() {
     return <String, dynamic>{
       if (id != null) DatabaseConstants.columnId: id,
-      DatabaseConstants.columnPdfId:          pdfId,
-      DatabaseConstants.columnPage:           page,
-      DatabaseConstants.columnSelectedText:   selectedText,
-      DatabaseConstants.columnRectList:       _encodeRects(rectList),
-      DatabaseConstants.columnColorValue:     colorValue,
+      DatabaseConstants.columnPdfId: pdfId,
+      DatabaseConstants.columnPage: page,
+      DatabaseConstants.columnSelectedText: selectedText,
+      DatabaseConstants.columnRectList: _encodeRects(rectList),
+      DatabaseConstants.columnColorValue: colorValue,
       DatabaseConstants.columnAnnotationType: annotationType.dbValue,
-      DatabaseConstants.columnCreatedAt:      createdAt.toUtc().toIso8601String(),
-      DatabaseConstants.columnNote:           note,
+      DatabaseConstants.columnCreatedAt: createdAt.toUtc().toIso8601String(),
+      DatabaseConstants.columnNote: note,
     };
   }
 
   factory Highlight.fromMap(Map<String, dynamic> map) {
     try {
       return Highlight(
-        id:   map[DatabaseConstants.columnId] as int?,
+        id: map[DatabaseConstants.columnId] as int?,
         pdfId: map[DatabaseConstants.columnPdfId] as String,
-        page:  map[DatabaseConstants.columnPage]  as int,
+        page: map[DatabaseConstants.columnPage] as int,
         selectedText: map[DatabaseConstants.columnSelectedText] as String,
-        rectList: _decodeRects(
-            map[DatabaseConstants.columnRectList] as String),
+        rectList: _decodeRects(map[DatabaseConstants.columnRectList] as String),
         colorValue: map[DatabaseConstants.columnColorValue] as int,
         // Backward-compatible: pre-v6 rows have no annotation_type column.
         annotationType: AnnotationType.fromDbValue(
@@ -213,8 +221,7 @@ class Highlight {
         note: map[DatabaseConstants.columnNote] as String?,
       );
     } catch (e) {
-      throw FormatException(
-          'Highlight.fromMap failed. Cause: $e\nRow: $map');
+      throw FormatException('Highlight.fromMap failed. Cause: $e\nRow: $map');
     }
   }
 
@@ -236,20 +243,19 @@ class Highlight {
   bool operator ==(Object other) {
     if (identical(this, other)) return true;
     if (other is! Highlight) return false;
-    return other.id             == id             &&
-        other.pdfId          == pdfId          &&
-        other.page           == page           &&
-        other.selectedText   == selectedText   &&
-        other.colorValue     == colorValue     &&
+    return other.id == id &&
+        other.pdfId == pdfId &&
+        other.page == page &&
+        other.selectedText == selectedText &&
+        other.colorValue == colorValue &&
         other.annotationType == annotationType &&
-        other.createdAt      == createdAt      &&
-        other.note           == note;
+        other.createdAt == createdAt &&
+        other.note == note;
   }
 
   @override
-  int get hashCode => Object.hash(
-      id, pdfId, page, selectedText, colorValue, annotationType,
-      createdAt, note);
+  int get hashCode => Object.hash(id, pdfId, page, selectedText, colorValue,
+      annotationType, createdAt, note);
 
   @override
   String toString() => 'Highlight('
@@ -257,9 +263,7 @@ class Highlight {
       'type: ${annotationType.dbValue}, '
       'rects: ${rectList.length}, '
       'color: 0x${colorValue.toRadixString(16).toUpperCase().padLeft(8, '0')}, '
-      'text: "${selectedText.length > 30
-      ? '${selectedText.substring(0, 30)}...'
-      : selectedText}")';
+      'text: "${selectedText.length > 30 ? '${selectedText.substring(0, 30)}...' : selectedText}")';
 }
 
 // ---------------------------------------------------------------------------
@@ -285,7 +289,7 @@ class HighlightRect {
   final double right;
   final double bottom;
 
-  double get width  => right  - left;
+  double get width => right - left;
   double get height => bottom - top;
 
   String encode() => '$left,$top,$right,$bottom';
@@ -297,9 +301,9 @@ class HighlightRect {
           'HighlightRect.fromString: expected 4 values, got "$s"');
     }
     return HighlightRect(
-      left:   double.parse(p[0]),
-      top:    double.parse(p[1]),
-      right:  double.parse(p[2]),
+      left: double.parse(p[0]),
+      top: double.parse(p[1]),
+      right: double.parse(p[2]),
       bottom: double.parse(p[3]),
     );
   }
@@ -308,14 +312,15 @@ class HighlightRect {
   bool operator ==(Object other) {
     if (identical(this, other)) return true;
     if (other is! HighlightRect) return false;
-    return other.left   == left  && other.top    == top &&
-        other.right  == right && other.bottom == bottom;
+    return other.left == left &&
+        other.top == top &&
+        other.right == right &&
+        other.bottom == bottom;
   }
 
   @override
   int get hashCode => Object.hash(left, top, right, bottom);
 
   @override
-  String toString() =>
-      'HighlightRect(l:$left, t:$top, r:$right, b:$bottom)';
+  String toString() => 'HighlightRect(l:$left, t:$top, r:$right, b:$bottom)';
 }

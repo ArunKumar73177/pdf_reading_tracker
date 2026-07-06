@@ -65,7 +65,7 @@ class _PdfSelectionScreenState extends State<PdfSelectionScreen> {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text(
           '"${progress.title ?? 'PDF'}" could not be found. '
-              'It may have been moved or deleted.',
+          'It may have been moved or deleted.',
         ),
         backgroundColor: Theme.of(context).colorScheme.error,
       ));
@@ -107,8 +107,8 @@ class _PdfSelectionScreenState extends State<PdfSelectionScreen> {
   }
 
   void _openOperations() => Navigator.of(context).push(
-    MaterialPageRoute(builder: (_) => const PdfOperationsScreen()),
-  );
+        MaterialPageRoute(builder: (_) => const PdfOperationsScreen()),
+      );
 
   void _openRecentScreen() => Navigator.of(context)
       .push(MaterialPageRoute(builder: (_) => const RecentPdfsScreen()))
@@ -122,7 +122,7 @@ class _PdfSelectionScreenState extends State<PdfSelectionScreen> {
     // (already ordered by lastReadAt DESC from getRecentlyRead).
     final continueReading = _recentlyRead
         .where((p) =>
-    p.totalPages > 0 && p.progressPct > 0.0 && p.progressPct < 100.0)
+            p.totalPages > 0 && p.progressPct > 0.0 && p.progressPct < 100.0)
         .toList();
 
     // Top 3 for the dashboard strip.
@@ -150,41 +150,41 @@ class _PdfSelectionScreenState extends State<PdfSelectionScreen> {
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : RefreshIndicator(
-        onRefresh: _refresh,
-        child: _recentlyRead.isEmpty
-            ? _EmptyState(onPick: _pickAndOpenPdf)
-            : ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            // ── Continue Reading dashboard ──────────────────
-            if (topContinue.isNotEmpty) ...[
-              _DashboardHeader(
-                icon: Icons.play_circle_outline_rounded,
-                label: 'Continue reading',
-                showSeeAll: continueReading.length > 3,
-                onSeeAll: _openRecentScreen,
-              ),
-              const SizedBox(height: 12),
-              ...topContinue.map((p) => _ContinueCard(
-                progress: p,
-                onTap: () => _openRecentProgress(p),
-              )),
-              const SizedBox(height: 28),
-            ],
+              onRefresh: _refresh,
+              child: _recentlyRead.isEmpty
+                  ? _EmptyState(onPick: _pickAndOpenPdf)
+                  : ListView(
+                      padding: const EdgeInsets.all(16),
+                      children: [
+                        // ── Continue Reading dashboard ──────────────────
+                        if (topContinue.isNotEmpty) ...[
+                          _DashboardHeader(
+                            icon: Icons.play_circle_outline_rounded,
+                            label: 'Continue reading',
+                            showSeeAll: continueReading.length > 3,
+                            onSeeAll: _openRecentScreen,
+                          ),
+                          const SizedBox(height: 12),
+                          ...topContinue.map((p) => _ContinueCard(
+                                progress: p,
+                                onTap: () => _openRecentProgress(p),
+                              )),
+                          const SizedBox(height: 28),
+                        ],
 
-            // ── Recent PDFs list ────────────────────────────
-            _SectionHeader(
-              icon: Icons.history_rounded,
-              label: 'Recent PDFs',
+                        // ── Recent PDFs list ────────────────────────────
+                        _SectionHeader(
+                          icon: Icons.history_rounded,
+                          label: 'Recent PDFs',
+                        ),
+                        const SizedBox(height: 8),
+                        ..._recentlyRead.map((p) => _PdfCard(
+                              progress: p,
+                              onTap: () => _openRecentProgress(p),
+                            )),
+                      ],
+                    ),
             ),
-            const SizedBox(height: 8),
-            ..._recentlyRead.map((p) => _PdfCard(
-              progress: p,
-              onTap: () => _openRecentProgress(p),
-            )),
-          ],
-        ),
-      ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _pickAndOpenPdf,
         icon: const Icon(Icons.upload_file_rounded),
@@ -265,15 +265,14 @@ class _ContinueCard extends StatelessWidget {
                       progress.title ?? 'Unknown PDF',
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: tt.bodyLarge
-                          ?.copyWith(fontWeight: FontWeight.w600),
+                      style:
+                          tt.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
                     ),
                     const SizedBox(height: 3),
                     Text(
                       'Page ${progress.currentPage + 1} of '
-                          '${progress.totalPages}',
-                      style: tt.bodySmall
-                          ?.copyWith(color: cs.onSurfaceVariant),
+                      '${progress.totalPages}',
+                      style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
                     ),
                     const SizedBox(height: 2),
                     Text(
@@ -293,7 +292,7 @@ class _ContinueCard extends StatelessWidget {
                 onPressed: onTap,
                 style: FilledButton.styleFrom(
                   padding:
-                  const EdgeInsets.symmetric(horizontal: 14, vertical: 0),
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 0),
                   minimumSize: const Size(0, 34),
                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 ),
@@ -321,8 +320,19 @@ class _ContinueCard extends StatelessWidget {
     if (diff.inDays == 1) return 'Yesterday';
     if (diff.inDays < 7) return '${diff.inDays} days ago';
     const months = [
-      '', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+      '',
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
     ];
     return '${dt.day} ${months[dt.month]}';
   }
@@ -368,8 +378,7 @@ class _DashboardHeader extends StatelessWidget {
           TextButton(
             onPressed: onSeeAll,
             style: TextButton.styleFrom(
-              padding:
-              const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
               minimumSize: const Size(0, 28),
               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
             ),
@@ -425,8 +434,8 @@ class _PdfCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
-    final fileExists = progress.filePath == null ||
-        File(progress.filePath!).existsSync();
+    final fileExists =
+        progress.filePath == null || File(progress.filePath!).existsSync();
     final title = progress.title ?? 'Unknown PDF';
     final pct = progress.progressPct.toStringAsFixed(1);
 
@@ -448,10 +457,9 @@ class _PdfCard extends StatelessWidget {
             children: [
               CircleAvatar(
                 backgroundColor:
-                fileExists ? cs.secondaryContainer : cs.errorContainer,
-                foregroundColor: fileExists
-                    ? cs.onSecondaryContainer
-                    : cs.onErrorContainer,
+                    fileExists ? cs.secondaryContainer : cs.errorContainer,
+                foregroundColor:
+                    fileExists ? cs.onSecondaryContainer : cs.onErrorContainer,
                 child: const Icon(Icons.upload_file_rounded),
               ),
               const SizedBox(width: 14),
@@ -472,9 +480,9 @@ class _PdfCard extends StatelessWidget {
                     if (progress.totalPages > 0)
                       Text(
                         'Page ${progress.currentPage + 1} of '
-                            '${progress.totalPages}  ·  $pct%',
-                        style: tt.bodySmall
-                            ?.copyWith(color: cs.onSurfaceVariant),
+                        '${progress.totalPages}  ·  $pct%',
+                        style:
+                            tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
                       ),
                     if (!fileExists)
                       Text('File not found',
@@ -523,12 +531,11 @@ class _EmptyState extends StatelessWidget {
                 size: 72, color: cs.onSurfaceVariant.withAlpha(100)),
             const SizedBox(height: 24),
             Text('No PDFs yet',
-                style:
-                tt.titleLarge?.copyWith(color: cs.onSurfaceVariant)),
+                style: tt.titleLarge?.copyWith(color: cs.onSurfaceVariant)),
             const SizedBox(height: 10),
             Text(
               'Tap "Open PDF" to pick a PDF from your device.\n'
-                  'Your reading progress and bookmarks are saved automatically.',
+              'Your reading progress and bookmarks are saved automatically.',
               textAlign: TextAlign.center,
               style: tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
             ),

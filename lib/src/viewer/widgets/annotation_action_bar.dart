@@ -13,11 +13,12 @@ class AnnotationCommit {
     this.note,
   });
   final AnnotationType type;
-  final int            colorValue;
+  final int colorValue;
+
   /// Optional note text attached to this annotation.
   /// Set post-commit via the Annotations sheet (Edit note).
   /// The toolbar no longer provides a pre-commit note button (Issue 1 fix).
-  final String?        note;
+  final String? note;
 }
 
 class NoteCommit {
@@ -75,41 +76,39 @@ class AnnotationActionBar extends StatefulWidget {
     required this.onDismiss,
   });
 
-  final String                         selectedText;
+  final String selectedText;
   final ValueChanged<AnnotationCommit> onCommit;
-  final VoidCallback                   onDismiss;
+  final VoidCallback onDismiss;
 
   @override
   State<AnnotationActionBar> createState() => AnnotationActionBarState();
 }
 
 class AnnotationActionBarState extends State<AnnotationActionBar> {
-  AnnotationType _type       = AnnotationType.highlight;
-  int            _colorValue = AnnotationColors.yellow;
+  AnnotationType _type = AnnotationType.highlight;
+  int _colorValue = AnnotationColors.yellow;
 
   static const _types = [
-    _TypeMeta(AnnotationType.highlight,
-        Icons.highlight_rounded,            'Highlight'),
-    _TypeMeta(AnnotationType.underline,
-        Icons.format_underline_rounded,     'Underline'),
-    _TypeMeta(AnnotationType.strikethrough,
-        Icons.format_strikethrough_rounded, 'Strike'),
-    _TypeMeta(AnnotationType.squiggly,
-        Icons.waves_rounded,                'Squiggly'),
+    _TypeMeta(AnnotationType.highlight, Icons.highlight_rounded, 'Highlight'),
+    _TypeMeta(
+        AnnotationType.underline, Icons.format_underline_rounded, 'Underline'),
+    _TypeMeta(AnnotationType.strikethrough, Icons.format_strikethrough_rounded,
+        'Strike'),
+    _TypeMeta(AnnotationType.squiggly, Icons.waves_rounded, 'Squiggly'),
   ];
 
   static const _colorLabels = <int, String>{
     AnnotationColors.yellow: 'Yellow',
-    AnnotationColors.green:  'Green',
-    AnnotationColors.blue:   'Blue',
-    AnnotationColors.pink:   'Pink',
+    AnnotationColors.green: 'Green',
+    AnnotationColors.blue: 'Blue',
+    AnnotationColors.pink: 'Pink',
     AnnotationColors.orange: 'Orange',
     AnnotationColors.purple: 'Purple',
   };
 
   void _commit() {
     widget.onCommit(AnnotationCommit(
-      type:       _type,
+      type: _type,
       colorValue: _colorValue,
       // note is intentionally null here — the user can add a note via the
       // Annotations sheet after the annotation is committed.
@@ -121,8 +120,8 @@ class AnnotationActionBarState extends State<AnnotationActionBar> {
   /// `.r/.g/.b` double accessors which require Flutter ≥ 3.27).
   static Color _shadowColor(Color base, int alpha) {
     final r = (base.value >> 16) & 0xFF;
-    final g = (base.value >>  8) & 0xFF;
-    final b =  base.value        & 0xFF;
+    final g = (base.value >> 8) & 0xFF;
+    final b = base.value & 0xFF;
     return Color.fromARGB(alpha, r, g, b);
   }
 
@@ -136,13 +135,13 @@ class AnnotationActionBarState extends State<AnnotationActionBar> {
         : widget.selectedText;
 
     return Material(
-      elevation:    8,
+      elevation: 8,
       borderRadius: BorderRadius.circular(16),
-      color:        cs.surfaceContainerHigh,
+      color: cs.surfaceContainerHigh,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         child: Column(
-          mainAxisSize:       MainAxisSize.min,
+          mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // ── Selected text preview + dismiss ────────────────────────
@@ -151,20 +150,20 @@ class AnnotationActionBarState extends State<AnnotationActionBar> {
                 Expanded(
                   child: Text(
                     '"$preview"',
-                    maxLines:  1,
-                    overflow:  TextOverflow.ellipsis,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: tt.bodySmall?.copyWith(
-                      color:     cs.onSurfaceVariant,
+                      color: cs.onSurfaceVariant,
                       fontStyle: FontStyle.italic,
                     ),
                   ),
                 ),
                 IconButton(
-                  icon:        const Icon(Icons.close_rounded, size: 18),
-                  tooltip:     'Dismiss',
-                  onPressed:   widget.onDismiss,
-                  color:       cs.onSurfaceVariant,
-                  padding:     EdgeInsets.zero,
+                  icon: const Icon(Icons.close_rounded, size: 18),
+                  tooltip: 'Dismiss',
+                  onPressed: widget.onDismiss,
+                  color: cs.onSurfaceVariant,
+                  padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(),
                 ),
               ],
@@ -181,12 +180,12 @@ class AnnotationActionBarState extends State<AnnotationActionBar> {
                   return Padding(
                     padding: const EdgeInsets.only(right: 6),
                     child: FilterChip(
-                      selected:      selected,
-                      avatar:        Icon(meta.icon, size: 16),
-                      label:         Text(meta.label, style: tt.labelSmall),
-                      onSelected:    (_) => setState(() => _type = meta.type),
+                      selected: selected,
+                      avatar: Icon(meta.icon, size: 16),
+                      label: Text(meta.label, style: tt.labelSmall),
+                      onSelected: (_) => setState(() => _type = meta.type),
                       visualDensity: VisualDensity.compact,
-                      padding:       EdgeInsets.zero,
+                      padding: EdgeInsets.zero,
                     ),
                   );
                 }).toList(growable: false),
@@ -203,7 +202,7 @@ class AnnotationActionBarState extends State<AnnotationActionBar> {
             Row(
               children: [
                 ...AnnotationColors.palette.map((c) {
-                  final isSelected   = _colorValue == c;
+                  final isSelected = _colorValue == c;
                   final displayColor = Color(c | 0xFF000000);
                   return Padding(
                     padding: const EdgeInsets.only(right: 6),
@@ -213,24 +212,23 @@ class AnnotationActionBarState extends State<AnnotationActionBar> {
                         onTap: () => setState(() => _colorValue = c),
                         child: AnimatedContainer(
                           duration: const Duration(milliseconds: 150),
-                          width:  24,
+                          width: 24,
                           height: 24,
                           decoration: BoxDecoration(
-                            color:  displayColor,
-                            shape:  BoxShape.circle,
+                            color: displayColor,
+                            shape: BoxShape.circle,
                             border: isSelected
-                                ? Border.all(
-                                color: cs.onSurface, width: 2.5)
+                                ? Border.all(color: cs.onSurface, width: 2.5)
                                 : null,
                             // Issue 6: use .value bit-shift instead of
                             // .r/.g/.b (Flutter ≥ 3.27 only).
                             boxShadow: isSelected
                                 ? [
-                              BoxShadow(
-                                color:      _shadowColor(cs.onSurface, 77),
-                                blurRadius: 4,
-                              ),
-                            ]
+                                    BoxShadow(
+                                      color: _shadowColor(cs.onSurface, 77),
+                                      blurRadius: 4,
+                                    ),
+                                  ]
                                 : null,
                           ),
                         ),
@@ -247,8 +245,8 @@ class AnnotationActionBarState extends State<AnnotationActionBar> {
                   style: FilledButton.styleFrom(
                     backgroundColor: Color(_colorValue | 0xFF000000),
                     foregroundColor: Colors.black87,
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 8),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     visualDensity: VisualDensity.compact,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(20),
@@ -268,6 +266,6 @@ class AnnotationActionBarState extends State<AnnotationActionBar> {
 class _TypeMeta {
   const _TypeMeta(this.type, this.icon, this.label);
   final AnnotationType type;
-  final IconData       icon;
-  final String         label;
+  final IconData icon;
+  final String label;
 }

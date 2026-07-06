@@ -33,7 +33,7 @@ class DndCapability {
   /// meaningfully do something.
   bool get isUsable =>
       level == DndSupportLevel.fullSupport ||
-          level == DndSupportLevel.partialSupport;
+      level == DndSupportLevel.partialSupport;
 
   @override
   String toString() => 'DndCapability(level: $level, reason: $reason)';

@@ -21,7 +21,7 @@ class NoteRect {
   final double right;
   final double bottom;
 
-  double get width  => right  - left;
+  double get width => right - left;
   double get height => bottom - top;
 
   String encode() => '$left,$top,$right,$bottom';
@@ -29,13 +29,12 @@ class NoteRect {
   factory NoteRect.fromString(String s) {
     final parts = s.split(',');
     if (parts.length != 4) {
-      throw FormatException(
-          'NoteRect.fromString: expected 4 values, got "$s"');
+      throw FormatException('NoteRect.fromString: expected 4 values, got "$s"');
     }
     return NoteRect(
-      left:   double.parse(parts[0]),
-      top:    double.parse(parts[1]),
-      right:  double.parse(parts[2]),
+      left: double.parse(parts[0]),
+      top: double.parse(parts[1]),
+      right: double.parse(parts[2]),
       bottom: double.parse(parts[3]),
     );
   }
@@ -44,16 +43,17 @@ class NoteRect {
   bool operator ==(Object other) {
     if (identical(this, other)) return true;
     if (other is! NoteRect) return false;
-    return other.left   == left  && other.top    == top &&
-        other.right  == right && other.bottom == bottom;
+    return other.left == left &&
+        other.top == top &&
+        other.right == right &&
+        other.bottom == bottom;
   }
 
   @override
   int get hashCode => Object.hash(left, top, right, bottom);
 
   @override
-  String toString() =>
-      'NoteRect(l:$left, t:$top, r:$right, b:$bottom)';
+  String toString() => 'NoteRect(l:$left, t:$top, r:$right, b:$bottom)';
 }
 
 // ---------------------------------------------------------------------------
@@ -135,13 +135,13 @@ class Note {
   }) {
     final now = DateTime.now().toUtc();
     return Note(
-      pdfId:        pdfId,
-      page:         page,
-      noteText:     noteText,
+      pdfId: pdfId,
+      page: page,
+      noteText: noteText,
       selectedText: selectedText,
-      rectList:     rectList,
-      createdAt:    now,
-      updatedAt:    now,
+      rectList: rectList,
+      createdAt: now,
+      updatedAt: now,
     );
   }
 
@@ -150,24 +150,24 @@ class Note {
   // ---------------------------------------------------------------------------
 
   Note copyWith({
-    int?           id,
-    String?        pdfId,
-    int?           page,
-    String?        noteText,
-    String?        selectedText,
+    int? id,
+    String? pdfId,
+    int? page,
+    String? noteText,
+    String? selectedText,
     List<NoteRect>? rectList,
-    DateTime?      createdAt,
-    DateTime?      updatedAt,
+    DateTime? createdAt,
+    DateTime? updatedAt,
   }) {
     return Note(
-      id:           id           ?? this.id,
-      pdfId:        pdfId        ?? this.pdfId,
-      page:         page         ?? this.page,
-      noteText:     noteText     ?? this.noteText,
+      id: id ?? this.id,
+      pdfId: pdfId ?? this.pdfId,
+      page: page ?? this.page,
+      noteText: noteText ?? this.noteText,
       selectedText: selectedText ?? this.selectedText,
-      rectList:     rectList     ?? this.rectList,
-      createdAt:    createdAt    ?? this.createdAt,
-      updatedAt:    updatedAt    ?? this.updatedAt,
+      rectList: rectList ?? this.rectList,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
     );
   }
 
@@ -178,26 +178,28 @@ class Note {
   Map<String, dynamic> toMap() {
     return <String, dynamic>{
       if (id != null) DatabaseConstants.columnId: id,
-      DatabaseConstants.columnPdfId:            pdfId,
-      DatabaseConstants.columnPage:             page,
-      DatabaseConstants.columnNoteText:         noteText,
+      DatabaseConstants.columnPdfId: pdfId,
+      DatabaseConstants.columnPage: page,
+      DatabaseConstants.columnNoteText: noteText,
       DatabaseConstants.columnNoteSelectedText: selectedText,
-      DatabaseConstants.columnNoteRectList:     _encodeRects(rectList),
-      DatabaseConstants.columnCreatedAt:        createdAt.toUtc().toIso8601String(),
-      DatabaseConstants.columnUpdatedAt:        updatedAt.toUtc().toIso8601String(),
+      DatabaseConstants.columnNoteRectList: _encodeRects(rectList),
+      DatabaseConstants.columnCreatedAt: createdAt.toUtc().toIso8601String(),
+      DatabaseConstants.columnUpdatedAt: updatedAt.toUtc().toIso8601String(),
     };
   }
 
   factory Note.fromMap(Map<String, dynamic> map) {
     try {
-      final rectRaw = (map[DatabaseConstants.columnNoteRectList] as String?) ?? '';
+      final rectRaw =
+          (map[DatabaseConstants.columnNoteRectList] as String?) ?? '';
       return Note(
-        id:           map[DatabaseConstants.columnId]   as int?,
-        pdfId:        map[DatabaseConstants.columnPdfId] as String,
-        page:         map[DatabaseConstants.columnPage]  as int,
-        noteText:     map[DatabaseConstants.columnNoteText] as String,
-        selectedText: (map[DatabaseConstants.columnNoteSelectedText] as String?) ?? '',
-        rectList:     rectRaw.isEmpty ? const [] : _decodeRects(rectRaw),
+        id: map[DatabaseConstants.columnId] as int?,
+        pdfId: map[DatabaseConstants.columnPdfId] as String,
+        page: map[DatabaseConstants.columnPage] as int,
+        noteText: map[DatabaseConstants.columnNoteText] as String,
+        selectedText:
+            (map[DatabaseConstants.columnNoteSelectedText] as String?) ?? '',
+        rectList: rectRaw.isEmpty ? const [] : _decodeRects(rectRaw),
         createdAt: DateTime.parse(
           map[DatabaseConstants.columnCreatedAt] as String,
         ).toLocal(),
@@ -228,28 +230,24 @@ class Note {
   bool operator ==(Object other) {
     if (identical(this, other)) return true;
     if (other is! Note) return false;
-    return other.id           == id           &&
-        other.pdfId        == pdfId        &&
-        other.page         == page         &&
-        other.noteText     == noteText     &&
+    return other.id == id &&
+        other.pdfId == pdfId &&
+        other.page == page &&
+        other.noteText == noteText &&
         other.selectedText == selectedText &&
-        other.createdAt    == createdAt    &&
-        other.updatedAt    == updatedAt;
+        other.createdAt == createdAt &&
+        other.updatedAt == updatedAt;
   }
 
   @override
-  int get hashCode =>
-      Object.hash(id, pdfId, page, noteText, selectedText, createdAt, updatedAt);
+  int get hashCode => Object.hash(
+      id, pdfId, page, noteText, selectedText, createdAt, updatedAt);
 
   @override
   String toString() => 'Note('
       'id: $id, pdfId: $pdfId, page: $page, '
-      'selectedText: "${selectedText.length > 30
-      ? '${selectedText.substring(0, 30)}...'
-      : selectedText}", '
-      'noteText: "${noteText.length > 30
-      ? '${noteText.substring(0, 30)}...'
-      : noteText}", '
+      'selectedText: "${selectedText.length > 30 ? '${selectedText.substring(0, 30)}...' : selectedText}", '
+      'noteText: "${noteText.length > 30 ? '${noteText.substring(0, 30)}...' : noteText}", '
       'rects: ${rectList.length}, '
       'updatedAt: $updatedAt)';
 }

@@ -55,32 +55,34 @@ class ReaderColors extends ThemeExtension<ReaderColors> {
   /// Calm, low-contrast pill — reads clearly over both light and dark PDF
   /// page content without competing for attention with the text.
   factory ReaderColors.light() => const ReaderColors(
-    overlayBackground: Color(0x99000000), // black 60%
-    overlayTrack: Color(0x33FFFFFF), // white 20%
-    overlayFill: Colors.white,
-    overlayLabel: Colors.white,
-    overlayLabelSecondary: Color(0x99FFFFFF), // white 60%
-    overlaySavingIndicator: Color(0xB3FFFFFF), // white 70%
-    noteBadge: Color(0xFF80DEEA), // teal 200
-  );
+        overlayBackground: Color(0x99000000), // black 60%
+        overlayTrack: Color(0x33FFFFFF), // white 20%
+        overlayFill: Colors.white,
+        overlayLabel: Colors.white,
+        overlayLabelSecondary: Color(0x99FFFFFF), // white 60%
+        overlaySavingIndicator: Color(0xB3FFFFFF), // white 70%
+        noteBadge: Color(0xFF80DEEA), // teal 200
+      );
 
   /// Slightly lighter / lower-opacity pill for dark mode, since the page
   /// backdrop is already dark and a heavy black pill would lose contrast
   /// against it.
   factory ReaderColors.dark() => const ReaderColors(
-    overlayBackground: Color(0xCC1C1C1E), // near-black 80%
-    overlayTrack: Color(0x40FFFFFF), // white 25%
-    overlayFill: Color(0xFFE8EAED),
-    overlayLabel: Color(0xFFE8EAED),
-    overlayLabelSecondary: Color(0x99E8EAED),
-    overlaySavingIndicator: Color(0xB3E8EAED),
-    noteBadge: Color(0xFF4DD0E1), // teal 300 — a touch brighter on dark
-  );
+        overlayBackground: Color(0xCC1C1C1E), // near-black 80%
+        overlayTrack: Color(0x40FFFFFF), // white 25%
+        overlayFill: Color(0xFFE8EAED),
+        overlayLabel: Color(0xFFE8EAED),
+        overlayLabelSecondary: Color(0x99E8EAED),
+        overlaySavingIndicator: Color(0xB3E8EAED),
+        noteBadge: Color(0xFF4DD0E1), // teal 300 — a touch brighter on dark
+      );
 
   /// Resolves the correct built-in variant for a given [Brightness].
   /// New future modes (Sepia, OLED Black…) get their own factory here.
   factory ReaderColors.forBrightness(Brightness brightness) =>
-      brightness == Brightness.dark ? ReaderColors.dark() : ReaderColors.light();
+      brightness == Brightness.dark
+          ? ReaderColors.dark()
+          : ReaderColors.light();
 
   @override
   ReaderColors copyWith({
@@ -98,9 +100,9 @@ class ReaderColors extends ThemeExtension<ReaderColors> {
       overlayFill: overlayFill ?? this.overlayFill,
       overlayLabel: overlayLabel ?? this.overlayLabel,
       overlayLabelSecondary:
-      overlayLabelSecondary ?? this.overlayLabelSecondary,
+          overlayLabelSecondary ?? this.overlayLabelSecondary,
       overlaySavingIndicator:
-      overlaySavingIndicator ?? this.overlaySavingIndicator,
+          overlaySavingIndicator ?? this.overlaySavingIndicator,
       noteBadge: noteBadge ?? this.noteBadge,
     );
   }
@@ -110,14 +112,14 @@ class ReaderColors extends ThemeExtension<ReaderColors> {
     if (other is! ReaderColors) return this;
     return ReaderColors(
       overlayBackground:
-      Color.lerp(overlayBackground, other.overlayBackground, t)!,
+          Color.lerp(overlayBackground, other.overlayBackground, t)!,
       overlayTrack: Color.lerp(overlayTrack, other.overlayTrack, t)!,
       overlayFill: Color.lerp(overlayFill, other.overlayFill, t)!,
       overlayLabel: Color.lerp(overlayLabel, other.overlayLabel, t)!,
-      overlayLabelSecondary: Color.lerp(
-          overlayLabelSecondary, other.overlayLabelSecondary, t)!,
-      overlaySavingIndicator: Color.lerp(
-          overlaySavingIndicator, other.overlaySavingIndicator, t)!,
+      overlayLabelSecondary:
+          Color.lerp(overlayLabelSecondary, other.overlayLabelSecondary, t)!,
+      overlaySavingIndicator:
+          Color.lerp(overlaySavingIndicator, other.overlaySavingIndicator, t)!,
       noteBadge: Color.lerp(noteBadge, other.noteBadge, t)!,
     );
   }

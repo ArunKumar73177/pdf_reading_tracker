@@ -30,8 +30,8 @@ class ReadingProgress {
         assert(totalPages >= 0, 'totalPages must be >= 0'),
         assert(currentPage <= totalPages, 'currentPage must be <= totalPages'),
         assert(
-        progressPct >= 0.0 && progressPct <= 100.0,
-        'progressPct must be in [0.0, 100.0]',
+          progressPct >= 0.0 && progressPct <= 100.0,
+          'progressPct must be in [0.0, 100.0]',
         );
 
   final int? id;
@@ -172,7 +172,7 @@ class ReadingProgress {
         currentPage: map[DatabaseConstants.columnCurrentPage] as int,
         totalPages: map[DatabaseConstants.columnTotalPages] as int,
         progressPct:
-        (map[DatabaseConstants.columnProgressPct] as num).toDouble(),
+            (map[DatabaseConstants.columnProgressPct] as num).toDouble(),
         lastReadAt: DateTime.parse(
           map[DatabaseConstants.columnLastReadAt] as String,
         ).toLocal(),
@@ -185,7 +185,7 @@ class ReadingProgress {
     } catch (e) {
       throw FormatException(
         'ReadingProgress.fromMap failed — check column names and types. '
-            'Cause: $e\nRow: $map',
+        'Cause: $e\nRow: $map',
       );
     }
   }
@@ -211,16 +211,16 @@ class ReadingProgress {
 
   @override
   int get hashCode => Object.hash(
-    id,
-    pdfId,
-    currentPage,
-    totalPages,
-    progressPct,
-    lastReadAt,
-    createdAt,
-    title,
-    filePath,
-  );
+        id,
+        pdfId,
+        currentPage,
+        totalPages,
+        progressPct,
+        lastReadAt,
+        createdAt,
+        title,
+        filePath,
+      );
 
   @override
   String toString() => 'ReadingProgress('
