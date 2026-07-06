@@ -167,11 +167,9 @@ class _MergeTabState extends State<_MergeTab> {
     }
 
     // 3. Clean up temp file (non-fatal if it fails).
-    if (tempPath != null) {
-      try {
-        await File(tempPath).delete();
-      } catch (_) {}
-    }
+    try {
+      await File(tempPath).delete();
+    } catch (_) {}
 
     if (!mounted) return;
     setState(() {
@@ -185,7 +183,7 @@ class _MergeTabState extends State<_MergeTab> {
 
     // 4. Open the result — context.mounted already verified above.
     if (!mounted) return;
-    await _openOutputPdf(context, persistentPath: persistentPath!);
+    await _openOutputPdf(context, persistentPath: persistentPath);
   }
 
   @override

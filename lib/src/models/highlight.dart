@@ -58,7 +58,7 @@ abstract final class AnnotationColors {
   static const int orange = 0x99FFA726;
   static const int purple = 0x99AB47BC;
 
-  /// Ordered list used by the color picker in [AnnotationActionBar].
+  /// Ordered list used by the color picker in `AnnotationActionBar`.
   static const List<int> palette = [
     yellow,
     green,

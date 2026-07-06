@@ -45,7 +45,7 @@ class ReadingProgress {
 
   final int totalPages;
 
-  /// Read-completion percentage in [0.0, 100.0].
+  /// Read-completion percentage in `0.0`–`100.0`.
   ///
   /// Computed as `((currentPage + 1) / totalPages * 100).clamp(0.0, 100.0)`
   /// so that page-index 0 (first page) yields >0 % and the last page always

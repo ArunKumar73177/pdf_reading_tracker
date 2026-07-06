@@ -1,9 +1,9 @@
 name: pdf_reading_tracker
 
 description: >
-  Production-ready Flutter PDF reader built on Syncfusion PDF Viewer, with
-  reading progress tracking, bookmarks, highlights, notes, SQLite
-  persistence, and PDF merge/split.
+  Feature-rich Flutter PDF reader with reading progress, bookmarks,
+  highlights, text-anchored notes, appearance theming, SQLite persistence,
+  and PDF merge/split — offline-first, built on Syncfusion PDF Viewer.
 
 version: 4.0.0
 
@@ -14,8 +14,8 @@ issue_tracker: https://github.com/ArunKumar73177/pdf_reading_tracker/issues
 topics:
   - pdf
   - pdf-viewer
-  - pdf-reader
   - annotations
+  - bookmarks
   - sqlite
 
 environment:

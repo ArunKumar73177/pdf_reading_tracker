@@ -49,7 +49,7 @@ class PdfViewerTheme {
 
 /// ### Stability-pass architecture note (read before modifying this file)
 ///
-/// [build] and [_buildBody] deliberately **never** call `Theme.of(context)`
+/// `build` and `_buildBody` deliberately **never** call `Theme.of(context)`
 /// in the loaded-reader code path, and nothing between the top-level
 /// `AnimatedTheme` and [_PdfViewerCore] establishes a `Theme` inherited
 /// dependency. This is load-bearing, not stylistic:
@@ -63,7 +63,7 @@ class PdfViewerTheme {
 /// `child` optimization — inherited-widget notification bypasses that
 /// optimization entirely. A previous version of this file called
 /// `Theme.of(context)` at the top of the method now split into
-/// [_buildBody]/[_buildLoadedContent], which reconstructed the entire
+/// `_buildBody`/`_buildLoadedContent`, which reconstructed the entire
 /// scaffold — including [_PdfViewerCore], i.e. `SfPdfViewer` itself — on
 /// every appearance-transition frame. That violates the "SfPdfViewer must
 /// never rebuild" requirement and was the root cause of the reader
@@ -189,7 +189,9 @@ class _PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
     if (!mounted) return;
     if (_ctrl.isLoading == _isLoading &&
         _ctrl.error == _error &&
-        _ctrl.resolvedFilePath == _resolvedFilePath) return;
+        _ctrl.resolvedFilePath == _resolvedFilePath) {
+      return;
+    }
     setState(() {
       _isLoading = _ctrl.isLoading;
       _error = _ctrl.error;

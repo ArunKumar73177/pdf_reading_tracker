@@ -28,7 +28,7 @@ sealed class PdfOperationException implements Exception {
 
   @override
   String toString() {
-    final buf = StringBuffer('${runtimeType}: $message');
+    final buf = StringBuffer('$runtimeType: $message');
     if (cause != null) buf.write('\nCause: $cause');
     return buf.toString();
   }

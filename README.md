@@ -1,10 +1,32 @@
 # pdf_reading_tracker
 
-A production-ready Flutter PDF reader package powered by Syncfusion PDF Viewer.
+[![pub package](https://img.shields.io/pub/v/pdf_reading_tracker.svg)](https://pub.dev/packages/pdf_reading_tracker)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Platform](https://img.shields.io/badge/platform-android%20%7C%20ios-blue.svg)](#platform-support)
 
-Track reading progress, continue reading from where users left off, manage bookmarks, create annotations, attach text-linked notes, import PDFs from device storage, merge and split PDFs, and persist everything locally using SQLite.
+A production-ready Flutter PDF reader widget, built on **Syncfusion PDF Viewer**, with reading progress tracking, bookmarks, text-anchored notes, annotations, appearance theming, and local SQLite persistence — fully offline-first.
 
-Designed for educational, productivity, and document-centric applications.
+Designed for educational apps, document-centric productivity tools, and any app that needs a drop-in, stateful PDF reading experience without building the plumbing yourself.
+
+---
+
+## Table of Contents
+
+- [Features](#features)
+- [Platform Support](#platform-support)
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+- [Widget Configuration](#widget-configuration)
+- [API Reference](#api-reference)
+- [Architecture](#architecture)
+- [Storage](#storage)
+- [Offline Support](#offline-support)
+- [Performance](#performance)
+- [Example App](#example-app)
+- [Roadmap](#roadmap)
+- [Known Limitations](#known-limitations)
+- [Contributing](#contributing)
+- [License](#license)
 
 ---
 
@@ -12,94 +34,99 @@ Designed for educational, productivity, and document-centric applications.
 
 | Category | Capabilities |
 |---|---|
-| PDF Reading | High-quality rendering, progress tracking, continue reading, recent PDFs, jump-to-page, multi-PDF support, double-tap zoom, vertical/horizontal navigation |
-| Search | Built-in text search, search navigation, match highlighting |
-| Bookmarks | Add/remove bookmarks, bookmark notes, SQLite-backed persistence |
-| Annotations | Highlight, underline, strikethrough, squiggly, full persistence and restoration |
-| Notes | Text-linked notes, edit/delete, jump-to-note, persistent storage |
-| PDF Management | Import from device, persistent library, continue-reading & recent dashboards, auto-restore after restart |
-| PDF Operations | Merge, split, typed exception handling |
-| Storage | SQLite persistence, offline-first, temporary cache cleanup |
+| **Reading** | High-quality rendering, progress tracking, continue-reading, recent PDFs, jump-to-page, multi-PDF support, double-tap zoom, vertical/horizontal navigation |
+| **Search** | In-document text search, match navigation, result highlighting |
+| **Bookmarks** | Add/remove bookmarks, per-bookmark notes, SQLite persistence |
+| **Annotations** | Highlight, underline, strikethrough, squiggly — with full persistence and restoration |
+| **Notes** | Text-anchored notes, edit/delete, jump-to-note, persistent storage |
+| **Appearance** | Light / Dark / Follow-System theming with an in-reader appearance selector |
+| **Reading Comfort** | Immersive (distraction-free) reading mode with auto-hiding chrome, keep-screen-awake toggle |
+| **PDF Management** | Import from device storage, persistent library, continue-reading & recent dashboards, auto-restore after app restart |
+| **PDF Operations** | Merge multiple PDFs, split into smaller documents, typed exception handling |
+| **Storage** | SQLite persistence, offline-first, automatic temp-file cleanup |
 
-### PDF Reading
+<details>
+<summary><strong>Full feature breakdown</strong></summary>
+
+### Reading
 - High-quality PDF rendering using Syncfusion PDF Viewer
-- Reading progress tracking
-- Continue reading
-- Recent PDFs
-- Jump to page
+- Reading progress tracking with persistent position
+- Continue-reading and recently-read dashboards
+- Jump to any page
 - Multi-PDF support
 - Double-tap zoom
-- Vertical and horizontal navigation
-- Persistent reading position
+- Vertical and horizontal (swipe) page navigation
 
 ### Search
 - Built-in PDF text search
-- Search navigation
+- Navigate between matches
 - Match highlighting
 
 ### Bookmarks
-- Add bookmarks
-- Remove bookmarks
-- Bookmark notes
-- Bookmark persistence
-- SQLite-backed storage
+- Add and remove bookmarks
+- Attach notes to bookmarks
+- SQLite-backed persistence
 
 ### Annotations
-- Highlight
-- Underline
-- Strikethrough
-- Squiggly
-- Annotation persistence
-- Annotation restoration after restart
+- Highlight, underline, strikethrough, and squiggly annotation types
+- Six-color palette per annotation
+- Full persistence and restoration after restart
 
 ### Notes
-- Text-linked notes
-- Edit notes
-- Delete notes
-- Jump to note
-- Persistent storage
+- Text-anchored notes (linked to the exact selected text and its position)
+- Edit and delete
+- Jump directly to the page a note was created on
+- Persistent storage independent of annotations
 
-### User PDF Management
+### Appearance & Reading Comfort
+- Light, Dark, and Follow-System appearance modes with an in-reader selector sheet
+- Immersive reading mode: auto-hiding app bar/controls, toggled by a single tap
+- Optional keep-screen-awake while reading
+
+### PDF Management
 - Import PDFs from device storage
-- Persistent PDF library
-- Continue reading dashboard
-- Recent PDFs dashboard
+- Persistent, on-device PDF library
+- Continue-reading and recent-PDFs dashboards
 - Automatic restoration after app restart
 
 ### PDF Operations
-- Merge multiple PDFs
-- Split PDFs into smaller documents
-- Typed exception handling
-- Syncfusion PDF processing
+- Merge multiple PDFs into one document
+- Split a PDF into smaller documents by page count
+- Typed exceptions for merge/split failure modes
 
 ### Storage
-- SQLite persistence
-- Offline first
-- Lightweight database
-- Persistent PDF storage
-- Temporary cache cleanup
-- Storage-efficient architecture
+- SQLite persistence, offline-first
+- Lightweight, migration-based schema
+- Automatic cleanup of temporary imported/merged/split files
+
+</details>
 
 ---
 
 ## Platform Support
 
 | Android | iOS |
-|---|---|
+|:---:|:---:|
 | ✅ | ✅ |
 
 ---
 
 ## Installation
 
+Add the package to your `pubspec.yaml`:
+
 ```yaml
 dependencies:
   pdf_reading_tracker: ^4.0.0
 ```
 
----
+Then fetch it:
 
-## Import
+```bash
+flutter pub get
+```
+
+Import it wherever you need it:
 
 ```dart
 import 'package:pdf_reading_tracker/pdf_reading_tracker.dart';
@@ -109,6 +136,8 @@ import 'package:pdf_reading_tracker/pdf_reading_tracker.dart';
 
 ## Quick Start
 
+The fastest way to get a fully working reader — progress tracking, bookmarks, highlights, and notes all included — is to drop in the viewer widget:
+
 ```dart
 PdfReadingTrackerViewer(
   pdfId: 'clean_architecture',
@@ -117,9 +146,49 @@ PdfReadingTrackerViewer(
 )
 ```
 
+That's it — reading progress, bookmarks, highlights, and notes are automatically tracked and persisted for this `pdfId`.
+
+### Reading a user-picked file instead of a bundled asset
+
+```dart
+PdfReadingTrackerViewer(
+  pdfId: 'user_document_42',
+  pdfTitle: 'My Document',
+  filePath: '/data/user/0/.../user_pdfs/document_42.pdf',
+)
+```
+
+> Provide **exactly one** of `assetPath` or `filePath` — not both, and not neither.
+
 ---
 
-## Complete Widget Example
+## Widget Configuration
+
+`PdfReadingTrackerViewer` exposes the following parameters:
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `pdfId` | `String` | required | Stable, unique identifier for this PDF (used as the persistence key) |
+| `pdfTitle` | `String` | required | Display title shown in the app bar |
+| `assetPath` | `String?` | — | Path to a bundled asset PDF. Mutually exclusive with `filePath` |
+| `filePath` | `String?` | — | Path to a PDF on device storage. Mutually exclusive with `assetPath` |
+| `onPageChanged` | `void Function(int page, int total)?` | — | Called whenever the current page changes |
+| `theme` | `PdfViewerTheme?` | — | Optional host-app color overrides for the app bar |
+| `swipeHorizontal` | `bool` | `false` | Horizontal (paged) vs. vertical (continuous scroll) navigation |
+| `enableDoubleTap` | `bool` | `true` | Enable double-tap-to-zoom |
+| `showAppBar` | `bool` | `true` | Show/hide the reader's app bar |
+| `showBottomBar` | `bool` | `true` | Show/hide the bottom progress overlay |
+| `showBookmarkFab` | `bool` | `true` | Show/hide the floating bookmark/note buttons |
+| `enableSearch` | `bool` | `true` | Enable in-document text search |
+| `enableHighlight` | `bool` | `true` | Enable highlight/annotation creation |
+| `showAppearanceToggle` | `bool` | `true` | Show the Light/Dark/System appearance option |
+| `initialAppearanceMode` | `AppearanceMode` | `AppearanceMode.system` | Starting appearance mode |
+| `onAppearanceModeChanged` | `void Function(AppearanceMode mode)?` | — | Called when the user changes appearance mode |
+| `initialReadingSettings` | `ReadingSettings?` | — | Starting immersive-mode / reading-comfort preferences |
+| `showReadingSettingsToggle` | `bool` | `true` | Show the reading-settings (immersive mode, keep-awake) option |
+| `onReadingSettingsChanged` | `void Function(ReadingSettings settings)?` | — | Called when reading settings change |
+
+### Fully configured example
 
 ```dart
 PdfReadingTrackerViewer(
@@ -136,27 +205,19 @@ PdfReadingTrackerViewer(
 
   swipeHorizontal: false,
   enableDoubleTap: true,
+
+  showAppearanceToggle: true,
+  showReadingSettingsToggle: true,
 )
 ```
 
-### Configuration
-
-| Parameter | Type | Default | Description |
-|---|---|---|---|
-| `pdfId` | `String` | required | Stable unique identifier for this PDF |
-| `pdfTitle` | `String` | required | Display title shown in the app bar |
-| `assetPath` | `String` | required | Path to the bundled or imported PDF |
-| `showAppBar` | `bool` | `true` | Show/hide the reader's app bar |
-| `showBottomBar` | `bool` | `true` | Show/hide the bottom navigation bar |
-| `showBookmarkFab` | `bool` | `true` | Show/hide the floating bookmark button |
-| `enableSearch` | `bool` | `true` | Enable in-document text search |
-| `enableHighlight` | `bool` | `true` | Enable highlight annotations |
-| `swipeHorizontal` | `bool` | `false` | Horizontal vs. vertical page navigation |
-| `enableDoubleTap` | `bool` | `true` | Enable double-tap-to-zoom |
-
 ---
 
-## Reading Progress API
+## API Reference
+
+Beyond the widget, a static `PdfReadingTracker` facade exposes every capability programmatically — useful for dashboards, background sync, or building your own reader UI.
+
+### Reading Progress
 
 ```dart
 // Save progress
@@ -169,16 +230,14 @@ await PdfReadingTracker.saveProgress(
   ),
 );
 
-// Get progress
+// Get progress for a specific PDF
 final progress = await PdfReadingTracker.getProgress('flutter_notes');
 
-// Get recently read
+// Get recently-read PDFs
 final recent = await PdfReadingTracker.getRecentlyRead();
 ```
 
----
-
-## Bookmarks API
+### Bookmarks
 
 ```dart
 await PdfReadingTracker.addBookmark(
@@ -192,39 +251,29 @@ await PdfReadingTracker.addBookmark(
 final bookmarks = await PdfReadingTracker.getBookmarks('flutter_notes');
 ```
 
----
-
-## Highlights API
+### Highlights
 
 ```dart
 final highlights = await PdfReadingTracker.getHighlights('flutter_notes');
 ```
 
----
-
-## Notes API
+### Notes
 
 ```dart
 final notes = await PdfReadingTracker.getNotes('flutter_notes');
 ```
 
----
+### Search
 
-## Search API
+Search is built directly into `PdfReadingTrackerViewer` via `enableSearch: true` — it provides in-document text search with match navigation and result highlighting, no extra wiring required.
 
-Search is available directly on `PdfReadingTrackerViewer` via `enableSearch: true`, exposing in-document text search with navigation between matches and highlighted results.
-
----
-
-## PDF Import
+### Importing a PDF
 
 ```dart
 final picked = await PdfPickerService.pickPdf();
 ```
 
----
-
-## PDF Merge
+### Merging PDFs
 
 ```dart
 final mergedPdf = await PdfMergeService.merge(
@@ -232,9 +281,7 @@ final mergedPdf = await PdfMergeService.merge(
 );
 ```
 
----
-
-## PDF Split
+### Splitting a PDF
 
 ```dart
 final files = await PdfSplitService.split(
@@ -247,53 +294,64 @@ final files = await PdfSplitService.split(
 
 ## Architecture
 
-- Syncfusion PDF Viewer for rendering
-- Syncfusion PDF processing for merge/split
-- SQLite persistence layer
-- Offline-first design
-- Service-based architecture separating reading, bookmarks, annotations, and notes
+- **Rendering** — Syncfusion PDF Viewer for on-device rendering and text selection
+- **PDF processing** — Syncfusion PDF processing engine for merge/split operations
+- **Persistence** — a dedicated SQLite layer, offline-first by design
+- **Service-based separation** — reading progress, bookmarks, annotations, and notes are each handled by their own service, avoiding a monolithic data layer
+- **Appearance/immersive layer** — a lightweight, listenable-based theming and visibility controller layer that never forces a rebuild of the PDF surface itself
+
+---
 
 ## Storage
 
-- SQLite-backed, lightweight schema
-- Efficient annotation and note storage
-- Automatic cleanup of temporary imported PDFs
+- Lightweight, migration-based SQLite schema
+- Efficient annotation and note storage (multi-rect selections stored per annotation/note)
+- Automatic cleanup of temporary files created during import, merge, or split operations
+- No cloud sync or network dependency — everything lives on-device
 
-## Performance
-
-- Background isolate-based page geometry reads to avoid UI jank
-- Debounced progress persistence to minimize database writes
+---
 
 ## Offline Support
 
-Fully offline-first — all reading progress, bookmarks, highlights, and notes are persisted locally via SQLite with no network dependency.
+`pdf_reading_tracker` is fully offline-first: reading progress, bookmarks, highlights, and notes are all persisted locally via SQLite. No network connection is required for any feature in the package.
+
+---
+
+## Performance
+
+- Background isolate-based page-geometry reads to avoid UI jank on large documents
+- Debounced progress persistence to minimize redundant database writes
+- Appearance and reading-settings changes are isolated via scoped `ListenableBuilder`s so the PDF surface itself never rebuilds during a theme transition
 
 ---
 
 ## Example App
 
-The `example/` app demonstrates the full feature set: PDF reading, progress tracking, continue reading, recent PDFs, bookmarks, notes, highlights, PDF import, merge, and split.
+The `example/` app demonstrates the full feature set end-to-end: PDF reading, progress tracking, continue-reading, recent PDFs, bookmarks, notes, highlights, appearance switching, immersive reading mode, PDF import, merge, and split.
 
 ---
 
 ## Roadmap
 
-- Dominant/exact page detection improvements
-- Expanded search customization
+- Further refinement of dominant/exact page detection accuracy
+- Expanded search customization options
 - Additional annotation types
-
----
-
-## Contributing
-
-Issues and pull requests are welcome via the [issue tracker](https://github.com/ArunKumar73177/pdf_reading_tracker/issues).
 
 ---
 
 ## Known Limitations
 
-- Reading progress relies on Syncfusion page-change events combined with visible-area detection; exact dominant-page accuracy is being refined.
-- Native swipe-threshold page snapping is not yet implemented (tracked for a future release pending a Syncfusion viewer upgrade).
+- Reading progress relies on Syncfusion page-change events combined with visible-area detection; exact dominant-page accuracy is still being refined.
+- Native swipe-threshold page snapping is not yet implemented (pending a future Syncfusion viewer upgrade).
+
+---
+
+## Contributing
+
+Contributions are welcome. Please open an issue to discuss significant changes before submitting a pull request.
+
+- **Issues & feature requests:** [GitHub Issues](https://github.com/ArunKumar73177/pdf_reading_tracker/issues)
+- **Pull requests:** fork the repository, create a feature branch, and submit a PR against `main`.
 
 ---
 

@@ -2,7 +2,7 @@ import 'package:flutter/foundation.dart';
 
 /// Immutable snapshot of the reader's distraction-free reading preferences.
 ///
-/// Persisted via [ReadingSettingsStorage] as a tiny JSON file — mirrors the
+/// Persisted via `ReadingSettingsStorage` as a tiny JSON file — mirrors the
 /// storage strategy already used by `AppearanceStorage` (Phase 1). No
 /// database table is added; this is intentional (Phase 3 brief: "DO NOT
 /// MODIFY ... Database").

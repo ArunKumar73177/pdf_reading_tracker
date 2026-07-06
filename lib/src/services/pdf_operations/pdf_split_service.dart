@@ -137,8 +137,9 @@ abstract final class PdfSplitService {
     String? outputDir,
     String? baseFileName,
   }) async {
-    if (!File(pdfPath).existsSync())
+    if (!File(pdfPath).existsSync()) {
       throw PdfSplitFileNotFoundException(pdfPath);
+    }
     if (pagesPerFile < 1) {
       throw const PdfSplitInvalidRangeException('pagesPerFile must be ≥ 1.');
     }
@@ -183,8 +184,9 @@ abstract final class PdfSplitService {
     String? outputDir,
     String? baseFileName,
   }) async {
-    if (!File(pdfPath).existsSync())
+    if (!File(pdfPath).existsSync()) {
       throw PdfSplitFileNotFoundException(pdfPath);
+    }
     if (ranges.isEmpty) {
       throw const PdfSplitInvalidRangeException(
           'At least one PageRange is required.');

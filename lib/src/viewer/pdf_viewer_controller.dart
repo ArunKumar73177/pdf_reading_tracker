@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
@@ -1057,8 +1056,9 @@ class PdfViewerController extends ChangeNotifier {
   }
 
   void _schedulePersistProgress() {
-    if (_currentPage == _persistedPage && _totalPages == _persistedTotalPages)
+    if (_currentPage == _persistedPage && _totalPages == _persistedTotalPages) {
       return;
+    }
     _progressDebounce?.cancel();
     _progressDebounce = Timer(_kProgressDebounce, _persistProgress);
   }

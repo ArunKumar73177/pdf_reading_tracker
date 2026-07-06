@@ -114,8 +114,8 @@ abstract final class PdfReadingTracker {
   // ── Notes API (v2.7.0 — text-anchored) ────────────────────────────────────
   ///
   /// [selectedText] and [rectList] anchor the note to the text the user
-  /// selected. When supplied, they override whatever [note.selectedText] /
-  /// [note.rectList] already carry — allowing callers to pass the raw
+  /// selected. When supplied, they override whatever `note.selectedText` /
+  /// `note.rectList` already carry — allowing callers to pass the raw
   /// `Note.create(...)` object together with the live selection data
   /// separately.  Pass empty values when creating notes programmatically.
   static Future<int> addNote(
