@@ -117,7 +117,7 @@ Add the package to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  pdf_reading_tracker: ^4.0.0
+  pdf_reading_tracker: ^4.0.1
 ```
 
 Then fetch it:

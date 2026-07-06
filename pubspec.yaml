@@ -5,7 +5,7 @@ description: >
   highlights, text-anchored notes, appearance theming, SQLite persistence,
   and PDF merge/split — offline-first, built on Syncfusion PDF Viewer.
 
-version: 4.0.0
+version: 4.0.1
 
 homepage: https://github.com/ArunKumar73177/pdf_reading_tracker
 repository: https://github.com/ArunKumar73177/pdf_reading_tracker
