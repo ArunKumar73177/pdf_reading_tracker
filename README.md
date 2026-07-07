@@ -1,20 +1,48 @@
 # pdf_reading_tracker
 
 [![pub package](https://img.shields.io/pub/v/pdf_reading_tracker.svg)](https://pub.dev/packages/pdf_reading_tracker)
+[![pub points](https://img.shields.io/pub/points/pdf_reading_tracker)](https://pub.dev/packages/pdf_reading_tracker/score)
+[![popularity](https://img.shields.io/pub/popularity/pdf_reading_tracker)](https://pub.dev/packages/pdf_reading_tracker/score)
+[![likes](https://img.shields.io/pub/likes/pdf_reading_tracker)](https://pub.dev/packages/pdf_reading_tracker/score)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Platform](https://img.shields.io/badge/platform-android%20%7C%20ios-blue.svg)](#platform-support)
 
-A production-ready Flutter PDF reader widget, built on **Syncfusion PDF Viewer**, with reading progress tracking, bookmarks, text-anchored notes, annotations, appearance theming, and local SQLite persistence — fully offline-first.
+A stateful Flutter PDF reader widget with reading progress tracking, bookmarks, notes, annotations, appearance theming, and offline-first SQLite persistence — built on Syncfusion PDF Viewer.
 
-Designed for educational apps, document-centric productivity tools, and any app that needs a drop-in, stateful PDF reading experience without building the plumbing yourself.
+## Why pdf_reading_tracker?
+
+Building a PDF reading experience usually means wiring together a viewer, a persistence layer for progress/bookmarks/notes, a search UI, and an appearance system — all by hand, before you get to your actual app logic. `pdf_reading_tracker` provides that entire stack as a single widget, or, if you need finer control, as a static API you can call directly:
+
+- **One widget, full feature set** — `PdfReadingTrackerViewer` ships reading, progress, bookmarks, annotations, notes, search, and appearance out of the box.
+- **No backend required** — every feature is backed by on-device SQLite; nothing depends on a network connection.
+- **Composable** — every feature is also exposed through a static `PdfReadingTracker` facade, so you can build a custom UI around the same persistence layer instead of using the bundled widget.
+- **Non-invasive integration** — designed to slot into an existing app's navigation and theming without requiring structural changes.
+
+Well suited for educational apps, document libraries, e-book/e-paper readers, and any document-centric productivity tool that needs "continue where you left off" behavior without building the plumbing yourself.
+
+## Highlights
+
+- **Reading Progress** — automatic, persistent page tracking per document
+- **Continue Reading & Recent PDFs** — dashboards backed by the same progress data
+- **Bookmarks** — with optional per-bookmark notes
+- **Multi-Type Annotations** — highlight, underline, strikethrough, squiggly, each with a six-color palette
+- **Text-Anchored Notes** — linked to the exact selected text, independent of bookmarks
+- **In-Document Search** — match navigation and result highlighting
+- **Immersive Reading Mode** — distraction-free, auto-hiding chrome
+- **Appearance Control** — Light / Dark / Follow-System, with an in-reader selector
+- **PDF Import, Merge & Split** — manage a personal PDF library on-device
+- **SQLite Persistence** — offline-first, migration-based schema
 
 ---
 
 ## Table of Contents
 
+- [Why pdf_reading_tracker?](#why-pdf_reading_tracker)
+- [Highlights](#highlights)
 - [Features](#features)
 - [Platform Support](#platform-support)
 - [Installation](#installation)
+- [Import](#import)
 - [Quick Start](#quick-start)
 - [Widget Configuration](#widget-configuration)
 - [API Reference](#api-reference)
@@ -23,6 +51,7 @@ Designed for educational apps, document-centric productivity tools, and any app 
 - [Offline Support](#offline-support)
 - [Performance](#performance)
 - [Example App](#example-app)
+- [FAQ](#faq)
 - [Roadmap](#roadmap)
 - [Known Limitations](#known-limitations)
 - [Contributing](#contributing)
@@ -113,20 +142,26 @@ Designed for educational apps, document-centric productivity tools, and any app 
 
 ## Installation
 
-Add the package to your `pubspec.yaml`:
+Add the package with:
+
+```bash
+flutter pub add pdf_reading_tracker
+```
+
+Or add it manually to `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  pdf_reading_tracker: ^4.0.1
+  pdf_reading_tracker: ^4.0.2
 ```
 
-Then fetch it:
+Then fetch dependencies:
 
 ```bash
 flutter pub get
 ```
 
-Import it wherever you need it:
+## Import
 
 ```dart
 import 'package:pdf_reading_tracker/pdf_reading_tracker.dart';
@@ -159,6 +194,8 @@ PdfReadingTrackerViewer(
 ```
 
 > Provide **exactly one** of `assetPath` or `filePath` — not both, and not neither.
+
+`pdfId` is the stable key the package uses to persist and look up progress, bookmarks, annotations, and notes for a given document. It should be unique and unchanging for the same logical document — reusing a `pdfId` across different files, or changing it for the same file, will break continuity of the stored data.
 
 ---
 
@@ -215,7 +252,7 @@ PdfReadingTrackerViewer(
 
 ## API Reference
 
-Beyond the widget, a static `PdfReadingTracker` facade exposes every capability programmatically — useful for dashboards, background sync, or building your own reader UI.
+Beyond the widget, a static `PdfReadingTracker` facade exposes every capability programmatically — useful for dashboards, background sync, or building your own reader UI on top of the same persistence layer.
 
 ### Reading Progress
 
@@ -265,7 +302,7 @@ final notes = await PdfReadingTracker.getNotes('flutter_notes');
 
 ### Search
 
-Search is built directly into `PdfReadingTrackerViewer` via `enableSearch: true` — it provides in-document text search with match navigation and result highlighting, no extra wiring required.
+Search is built directly into `PdfReadingTrackerViewer` via `enableSearch: true` — it provides in-document text search with match navigation and result highlighting, with no additional wiring required.
 
 ### Importing a PDF
 
@@ -294,11 +331,29 @@ final files = await PdfSplitService.split(
 
 ## Architecture
 
-- **Rendering** — Syncfusion PDF Viewer for on-device rendering and text selection
-- **PDF processing** — Syncfusion PDF processing engine for merge/split operations
-- **Persistence** — a dedicated SQLite layer, offline-first by design
-- **Service-based separation** — reading progress, bookmarks, annotations, and notes are each handled by their own service, avoiding a monolithic data layer
-- **Appearance/immersive layer** — a lightweight, listenable-based theming and visibility controller layer that never forces a rebuild of the PDF surface itself
+```
+┌─────────────────────────────────────────────┐
+│              PdfReadingTrackerViewer         │
+│   (widget: rendering, gestures, chrome)      │
+└───────────────┬───────────────────────────────┘
+                │
+     ┌──────────┼───────────────┬───────────────┐
+     ▼          ▼                ▼               ▼
+ Progress   Bookmarks/       Appearance /    PDF Ops
+ Service    Annotations/     Reading         (Import,
+            Notes Services   Settings        Merge, Split)
+     │          │                │               │
+     └──────────┴───────┬────────┘               │
+                         ▼                        ▼
+                  SQLite (persistence)     Syncfusion PDF
+                                            processing engine
+```
+
+- **Rendering** — Syncfusion PDF Viewer handles on-device rendering and text selection.
+- **PDF processing** — the Syncfusion PDF processing engine powers merge/split operations.
+- **Persistence** — a dedicated SQLite layer, offline-first by design.
+- **Service-based separation** — reading progress, bookmarks, annotations, and notes are each handled by their own service, avoiding a monolithic data layer.
+- **Appearance/immersive layer** — a lightweight, listenable-based theming and visibility controller that never forces a rebuild of the PDF surface itself.
 
 ---
 
@@ -331,11 +386,30 @@ The `example/` app demonstrates the full feature set end-to-end: PDF reading, pr
 
 ---
 
+## FAQ
+
+**Do I need a backend or API key to use this package?**
+No. All persistence is local, on-device SQLite. There is no network dependency for any feature.
+
+**Can I use my own PDF viewer UI instead of `PdfReadingTrackerViewer`?**
+Yes. Every capability — progress, bookmarks, highlights, notes, import, merge, split — is also available through the static `PdfReadingTracker` facade and standalone services, so you can build a custom UI on top of the same persistence layer.
+
+**What happens if I change a document's `pdfId`?**
+Progress, bookmarks, annotations, and notes are keyed by `pdfId`. Changing it for an existing document will disconnect it from its previously stored data.
+
+**Can I provide both `assetPath` and `filePath`?**
+No — exactly one must be provided per `PdfReadingTrackerViewer` instance.
+
+**Does the package support cloud sync?**
+Not currently. All data is stored locally via SQLite; see [Roadmap](#roadmap) for planned work.
+
+---
+
 ## Roadmap
 
-- Further refinement of dominant/exact page detection accuracy
-- Expanded search customization options
-- Additional annotation types
+- [ ] Further refinement of dominant/exact page detection accuracy
+- [ ] Expanded search customization options
+- [ ] Additional annotation types
 
 ---
 

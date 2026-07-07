@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-
 import 'design_tokens.dart';
 import 'theme_extensions.dart';
 
@@ -58,12 +57,6 @@ abstract final class AppearanceThemeBuilder {
         style: SegmentedButton.styleFrom(
           visualDensity: VisualDensity.compact,
         ),
-      ),
-      pageTransitionsTheme: const PageTransitionsTheme(
-        builders: {
-          TargetPlatform.android: FadeUpwardsPageTransitionsBuilder(),
-          TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
-        },
       ),
       extensions: [ReaderColors.forBrightness(brightness)],
     );

@@ -2,7 +2,26 @@
 
 All notable changes to this project are documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
+The format is based on Keep a Changelog.
+
+---
+
+## 4.0.2
+
+### Changed
+- Simplified package metadata and improved pub.dev discoverability.
+- Refined README with clearer setup instructions, feature descriptions, and API documentation.
+- Improved package documentation for better developer experience.
+
+### Fixed
+- Resolved all dartdoc unresolved documentation references.
+- Improved lower-bound package compatibility for pub.dev analysis.
+- Cleaned up analyzer and documentation issues.
+- Minor code quality and maintainability improvements.
+
+### Internal
+- Updated package metadata and release documentation.
+- General maintenance and project cleanup.
 
 ---
 
