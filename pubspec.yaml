@@ -1,10 +1,11 @@
 name: pdf_reading_tracker
 
 description: >
-  Flutter PDF reader with reading progress, bookmarks, annotations,
-  notes, SQLite persistence, and PDF merge/split.
+  Flutter PDF reader with progress tracking, bookmarks, annotations,
+  notes, search, host toolbar integration, offline SQLite persistence,
+  and PDF merge/split.
 
-version: 4.0.2
+version: 4.1.0
 
 homepage: https://github.com/ArunKumar73177/pdf_reading_tracker
 repository: https://github.com/ArunKumar73177/pdf_reading_tracker
@@ -14,8 +15,8 @@ topics:
   - pdf
   - pdf-viewer
   - annotations
-  - bookmarks
   - sqlite
+  - ebook
 
 environment:
   sdk: ^3.3.0

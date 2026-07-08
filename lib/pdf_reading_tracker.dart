@@ -41,7 +41,21 @@ export 'src/immersive/dnd/dnd_service.dart' show DndCapability, DndSupportLevel;
 
 // ── Public viewer widget ──────────────────────────────────────────────────────
 export 'src/viewer/pdf_reading_tracker_viewer.dart'
-    show PdfReadingTrackerViewer, PdfViewerTheme;
+    show PdfReadingTrackerViewer, PdfViewerTheme, PdfReadingTrackerViewerState;
+
+// ── Reader actions (host toolbar support, v4.1.0) ─────────────────────────────
+export 'src/viewer/pdf_reader_actions.dart' show PdfReaderActions;
+export 'src/viewer/widgets/pdf_reader_toolbar.dart'
+    show
+        PdfReaderToolbar,
+        BookmarkButton,
+        NotesButton,
+        HighlightsButton,
+        SearchButton,
+        JumpToPageButton,
+        AppearanceButton,
+        ReadingSettingsButton;
+export 'src/theme/appearance_mode.dart' show AppearanceMode;
 
 // ── Internal imports for the static facade ───────────────────────────────────
 import 'src/models/bookmark.dart';
@@ -66,6 +80,16 @@ import 'src/services/progress_service.dart';
 /// Notes are now text-anchored: [addNote] requires [selectedText] and
 /// [rectList] so every note is attached to the text the user had selected.
 /// An empty [selectedText] is accepted for headless / programmatic use.
+///
+/// **v4.1.0 — Host toolbar support**
+/// When using [PdfReadingTrackerViewer] with `showAppBar: false`, attach a
+/// `GlobalKey<PdfReadingTrackerViewerState>` to the viewer and use its
+/// `readerActions` (a [PdfReaderActions]) together with the ready-made
+/// [PdfReaderToolbar] / [BookmarkButton] / [NotesButton] /
+/// [HighlightsButton] / [SearchButton] / [JumpToPageButton] /
+/// [AppearanceButton] / [ReadingSettingsButton] widgets to drive the exact
+/// same reader actions the plugin's own built-in app bar uses — no
+/// duplicated logic.
 ///
 /// For the all-in-one reader widget, use [PdfReadingTrackerViewer].
 abstract final class PdfReadingTracker {

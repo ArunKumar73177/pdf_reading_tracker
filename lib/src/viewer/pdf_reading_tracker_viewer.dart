@@ -15,6 +15,7 @@ import '../services/bookmark_service.dart';
 import '../theme/appearance_controller.dart';
 import '../theme/appearance_mode.dart';
 import '../theme/design_tokens.dart';
+import 'pdf_reader_actions.dart';
 import 'pdf_search_controller.dart';
 import 'pdf_viewer_controller.dart';
 import 'widgets/annotation_action_bar.dart';
@@ -122,10 +123,17 @@ class PdfReadingTrackerViewer extends StatefulWidget {
 
   @override
   State<PdfReadingTrackerViewer> createState() =>
-      _PdfReadingTrackerViewerState();
+      PdfReadingTrackerViewerState();
 }
 
-class _PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
+/// Public state for [PdfReadingTrackerViewer].
+///
+/// Attach a `GlobalKey<PdfReadingTrackerViewerState>` to the viewer to get
+/// [readerActions] — this lets a host app that renders its own app bar
+/// (`showAppBar: false`) still trigger bookmark / highlight / note /
+/// search / appearance / reading-settings / jump-to-page actions, using
+/// the exact same code paths the plugin's own chrome uses.
+class PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
   late final PdfViewerController _ctrl;
   late final AppearanceController _appearance;
   late final ReadingSettingsController _readingSettings;
@@ -143,6 +151,74 @@ class _PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
   bool _dialogOpen = false;
 
   bool _scrollDetectionActive = false;
+
+  /// Dedicated notifier for search-bar visibility, kept in sync with
+  /// [_searchVisible] inside [_toggleSearch]. This exists solely so
+  /// [readerListenable] can notify host toolbars (e.g. `SearchButton`)
+  /// the moment search is toggled — [_searchVisible] itself is a plain
+  /// field and triggers a rebuild only of this widget's own subtree via
+  /// `setState`, which a host app's external toolbar never observes.
+  late final ValueNotifier<bool> _searchVisibleNotifier =
+      ValueNotifier<bool>(_searchVisible);
+
+  /// Public facade for triggering reader actions and reading live counts
+  /// from outside this widget. See [PdfReaderActions].
+  late final PdfReaderActions readerActions = PdfReaderActions(this);
+
+  /// Notifies whenever bookmark/highlight/note counts, search visibility,
+  /// or appearance/reading-settings state changes. Merges the same
+  /// notifiers the plugin's own app bar already listens to.
+  late final Listenable readerListenable = Listenable.merge([
+    _ctrl.bookmarksNotifier,
+    _ctrl.highlightNotifier,
+    _ctrl.notesNotifier,
+    _ctrl.pageNotifier,
+    _appearance,
+    _readingSettings,
+    _searchVisibleNotifier,
+  ]);
+
+  // ── Public read-only state (mirrors what _AppBarWithSearch displays) ──
+
+  int get bookmarkCount => _ctrl.bookmarks.length;
+  int get highlightCount => _ctrl.highlights.length;
+  int get noteCount => _ctrl.notes.length;
+  bool get searchVisible => _searchVisible;
+  AppearanceMode get appearanceMode => _appearance.mode;
+  int get currentPage => _ctrl.currentPage;
+  int get totalPages => _ctrl.totalPages;
+  bool get isBookmarkedOnCurrentPage =>
+      _ctrl.bookmarks.any((b) => b.page == _ctrl.currentPage);
+
+  // ── Public action wrappers — each forwards to the single existing
+  // private handler, so there is exactly one implementation per action. ──
+
+  /// Adds or edits the bookmark on the current page.
+  Future<void> handleBookmarkTap() => _handleBookmarkTap();
+
+  /// Opens the Bookmarks sheet.
+  Future<void> handleBookmarksIconTap() => _handleBookmarksIconTap();
+
+  /// Opens the Annotations (highlights) sheet.
+  Future<void> handleHighlightsIconTap() => _handleHighlightsIconTap();
+
+  /// Opens the Notes sheet.
+  Future<void> handleNotesIconTap() => _handleNotesIconTap();
+
+  /// Adds a note anchored to the current text selection, if any.
+  Future<void> handleAddNoteTap() => _handleAddNoteTap();
+
+  /// Opens the "Jump to page" dialog.
+  Future<void> handleJumpToPage() => _handleJumpToPage();
+
+  /// Opens the Appearance picker sheet.
+  Future<void> showAppearanceSelectorAction() => _showAppearanceSelector();
+
+  /// Opens the Reading Settings sheet.
+  Future<void> showReadingSettingsAction() => _showReadingSettings();
+
+  /// Toggles the plugin's own inline search bar.
+  void toggleSearchAction() => _toggleSearch();
 
   @override
   void initState() {
@@ -182,6 +258,7 @@ class _PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
     _immersiveVisibility.dispose();
     _readingSettings.dispose();
     _dndService.dispose();
+    _searchVisibleNotifier.dispose();
     super.dispose();
   }
 
@@ -360,6 +437,7 @@ class _PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
   void _toggleSearch() {
     setState(() {
       _searchVisible = !_searchVisible;
+      _searchVisibleNotifier.value = _searchVisible;
       if (!_searchVisible) _ctrl.searchController.clearSearch();
     });
   }
@@ -804,23 +882,6 @@ class _JumpToPageDialogState extends State<_JumpToPageDialog> {
     );
   }
 }
-
-// ---------------------------------------------------------------------------
-// AppBar with collapsible search + appearance toggle + reading settings
-//
-// ### Stability-pass fix — no hardcoded / passed-in colors
-//
-// Previously received pre-resolved `backgroundColor`/`foregroundColor`
-// values computed once, far up the tree, from a `Theme.of(context)` call
-// that could go stale (this was bug #2, and contributed to bug #1 — see
-// the class doc on `_PdfReadingTrackerViewerState`). This widget now
-// receives only the optional host-supplied [PdfViewerTheme] override and
-// resolves the *actual* colors itself, live, from `Theme.of(context)` in
-// its own `build()` — the only correct place to do so, since this widget
-// is rebuilt independently by its own `ListenableBuilder` and reading
-// `Theme.of(context)` here cannot cascade into rebuilding `SfPdfViewer`
-// (this widget has no descendant that mounts it).
-// ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
 // AppBar with collapsible search + overflow menu
