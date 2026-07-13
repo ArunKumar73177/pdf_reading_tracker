@@ -1,5 +1,4 @@
 import 'package:flutter/foundation.dart';
-
 import '../theme/appearance_mode.dart';
 import 'pdf_reading_tracker_viewer.dart';
 
@@ -16,15 +15,22 @@ import 'pdf_reading_tracker_viewer.dart';
 /// [AppearanceButton] / [ReadingSettingsButton] / [PdfReaderToolbar]
 /// widgets (in `pdf_reader_toolbar.dart`) over calling this manually —
 /// they already wire up live counts/icons via [listenable].
+///
+/// ### Immersive Mode (host integration)
+/// [immersiveModeEnabled] / [immersiveChromeVisible] mirror the exact
+/// same `ImmersiveVisibilityController` state the plugin's own app bar,
+/// FAB, and progress overlay already consult — this is the single source
+/// of truth for chrome visibility. A host app using `showAppBar: false`
+/// can listen to [listenable] and read these two getters to hide/show its
+/// own app bar in lockstep with the plugin's chrome, without duplicating
+/// any auto-hide/timer logic.
 @immutable
 class PdfReaderActions {
   const PdfReaderActions(this._state);
-
   final PdfReadingTrackerViewerState _state;
-
-  /// Notifies on any change relevant to a custom toolbar.
+  /// Notifies on any change relevant to a custom toolbar, including
+  /// immersive chrome visibility.
   Listenable get listenable => _state.readerListenable;
-
   int get bookmarkCount => _state.bookmarkCount;
   int get highlightCount => _state.highlightCount;
   int get noteCount => _state.noteCount;
@@ -33,7 +39,11 @@ class PdfReaderActions {
   AppearanceMode get appearanceMode => _state.appearanceMode;
   int get currentPage => _state.currentPage;
   int get totalPages => _state.totalPages;
-
+  /// Whether Immersive Mode is currently enabled in Reading Settings.
+  bool get immersiveModeEnabled => _state.immersiveModeEnabled;
+  /// Whether the reader chrome is currently visible under Immersive Mode.
+  /// Always `true` when Immersive Mode is off.
+  bool get immersiveChromeVisible => _state.immersiveChromeVisible;
   Future<void> addOrEditBookmark() => _state.handleBookmarkTap();
   Future<void> showBookmarks() => _state.handleBookmarksIconTap();
   Future<void> showHighlights() => _state.handleHighlightsIconTap();

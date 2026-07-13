@@ -11,18 +11,18 @@ class BookmarkButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
-        listenable: actions.listenable,
-        builder: (context, _) => IconButton(
-          icon: Badge(
-            isLabelVisible: actions.bookmarkCount > 0,
-            label: Text('${actions.bookmarkCount}'),
-            child: const Icon(Icons.bookmarks_outlined),
-          ),
-          color: color,
-          tooltip: 'View bookmarks',
-          onPressed: actions.showBookmarks,
-        ),
-      );
+    listenable: actions.listenable,
+    builder: (context, _) => IconButton(
+      icon: Badge(
+        isLabelVisible: actions.bookmarkCount > 0,
+        label: Text('${actions.bookmarkCount}'),
+        child: const Icon(Icons.bookmarks_outlined),
+      ),
+      color: color,
+      tooltip: 'View bookmarks',
+      onPressed: actions.showBookmarks,
+    ),
+  );
 }
 
 /// Icon button that opens the Notes sheet with a live count badge.
@@ -33,18 +33,18 @@ class NotesButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
-        listenable: actions.listenable,
-        builder: (context, _) => IconButton(
-          icon: Badge(
-            isLabelVisible: actions.noteCount > 0,
-            label: Text('${actions.noteCount}'),
-            child: const Icon(Icons.sticky_note_2_outlined),
-          ),
-          color: color,
-          tooltip: 'View notes',
-          onPressed: actions.showNotes,
-        ),
-      );
+    listenable: actions.listenable,
+    builder: (context, _) => IconButton(
+      icon: Badge(
+        isLabelVisible: actions.noteCount > 0,
+        label: Text('${actions.noteCount}'),
+        child: const Icon(Icons.sticky_note_2_outlined),
+      ),
+      color: color,
+      tooltip: 'View notes',
+      onPressed: actions.showNotes,
+    ),
+  );
 }
 
 /// Icon button that opens the Annotations (highlights) sheet.
@@ -55,18 +55,18 @@ class HighlightsButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
-        listenable: actions.listenable,
-        builder: (context, _) => IconButton(
-          icon: Badge(
-            isLabelVisible: actions.highlightCount > 0,
-            label: Text('${actions.highlightCount}'),
-            child: const Icon(Icons.format_color_text_rounded),
-          ),
-          color: color,
-          tooltip: 'View annotations',
-          onPressed: actions.showHighlights,
-        ),
-      );
+    listenable: actions.listenable,
+    builder: (context, _) => IconButton(
+      icon: Badge(
+        isLabelVisible: actions.highlightCount > 0,
+        label: Text('${actions.highlightCount}'),
+        child: const Icon(Icons.format_color_text_rounded),
+      ),
+      color: color,
+      tooltip: 'View annotations',
+      onPressed: actions.showHighlights,
+    ),
+  );
 }
 
 /// Icon button that toggles the plugin's own inline search bar.
@@ -77,19 +77,23 @@ class SearchButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
-        listenable: actions.listenable,
-        builder: (context, _) => IconButton(
-          icon: Icon(actions.searchVisible
-              ? Icons.search_off_rounded
-              : Icons.search_rounded),
-          color: color,
-          tooltip: actions.searchVisible ? 'Close search' : 'Search text',
-          onPressed: actions.toggleSearch,
-        ),
-      );
+    listenable: actions.listenable,
+    builder: (context, _) => IconButton(
+      icon: Icon(actions.searchVisible
+          ? Icons.search_off_rounded
+          : Icons.search_rounded),
+      color: color,
+      tooltip: actions.searchVisible ? 'Close search' : 'Search text',
+      onPressed: actions.toggleSearch,
+    ),
+  );
 }
 
 /// Icon button that opens the "Jump to page" dialog.
+///
+/// Kept as a standalone public widget for host apps that want to compose
+/// their own layout. [PdfReaderToolbar] itself no longer places this
+/// inline — see the class doc below for why.
 class JumpToPageButton extends StatelessWidget {
   const JumpToPageButton({super.key, required this.actions, this.color});
   final PdfReaderActions actions;
@@ -97,20 +101,24 @@ class JumpToPageButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => IconButton(
-        icon: const Icon(Icons.redo_rounded),
-        color: color,
-        tooltip: 'Jump to page',
-        onPressed: actions.jumpToPage,
-      );
+    icon: const Icon(Icons.redo_rounded),
+    color: color,
+    tooltip: 'Jump to page',
+    onPressed: actions.jumpToPage,
+  );
 }
 
 /// Icon button that opens the Appearance picker sheet.
+///
+/// Kept as a standalone public widget for host apps that want to compose
+/// their own layout. [PdfReaderToolbar] itself no longer places this
+/// inline — see the class doc below for why.
 class AppearanceButton extends StatelessWidget {
   const AppearanceButton({super.key, required this.actions, this.color});
   final PdfReaderActions actions;
   final Color? color;
 
-  static IconData _iconFor(AppearanceMode mode) {
+  static IconData iconFor(AppearanceMode mode) {
     switch (mode) {
       case AppearanceMode.light:
         return Icons.light_mode_rounded;
@@ -123,17 +131,21 @@ class AppearanceButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
-        listenable: actions.listenable,
-        builder: (context, _) => IconButton(
-          icon: Icon(_iconFor(actions.appearanceMode)),
-          color: color,
-          tooltip: 'Appearance',
-          onPressed: actions.showAppearanceSelector,
-        ),
-      );
+    listenable: actions.listenable,
+    builder: (context, _) => IconButton(
+      icon: Icon(iconFor(actions.appearanceMode)),
+      color: color,
+      tooltip: 'Appearance',
+      onPressed: actions.showAppearanceSelector,
+    ),
+  );
 }
 
 /// Icon button that opens the Reading Settings sheet.
+///
+/// Kept as a standalone public widget for host apps that want to compose
+/// their own layout. [PdfReaderToolbar] itself no longer places this
+/// inline — see the class doc below for why.
 class ReadingSettingsButton extends StatelessWidget {
   const ReadingSettingsButton({super.key, required this.actions, this.color});
   final PdfReaderActions actions;
@@ -141,16 +153,54 @@ class ReadingSettingsButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => IconButton(
-        icon: const Icon(Icons.tune_rounded),
-        color: color,
-        tooltip: 'Reading settings',
-        onPressed: actions.showReadingSettings,
-      );
+    icon: const Icon(Icons.tune_rounded),
+    color: color,
+    tooltip: 'Reading settings',
+    onPressed: actions.showReadingSettings,
+  );
 }
 
-/// Ready-made row combining all of the above. Drop into a host app's own
-/// `AppBar.actions` when using `showAppBar: false`. Toggle individual
-/// buttons off via the `show*` flags, or compose them yourself instead.
+/// Overflow items shown in [PdfReaderToolbar]'s "more" menu. Mirrors the
+/// private `_OverflowAction` enum in `pdf_reading_tracker_viewer.dart` —
+/// duplicated (not shared) intentionally, since the two live in separate
+/// libraries and this file must not import a plugin-private symbol.
+enum _HostOverflowAction { jumpToPage, appearance, readingSettings }
+
+/// Ready-made row combining bookmark / notes / highlights / search /
+/// jump-to-page / appearance / reading-settings actions. Drop into a host
+/// app's own `AppBar.actions` when using `showAppBar: false`.
+///
+/// ### Production-pass fix — parity with the plugin's own app bar
+///
+/// The plugin's built-in app bar (`_AppBarWithSearch` in
+/// `pdf_reading_tracker_viewer.dart`) was decluttered to show only
+/// Search · Notes · Highlights · Bookmarks inline, with Jump to page ·
+/// Appearance · Reading settings moved into a single overflow menu — see
+/// that file's audit note. This widget previously rendered all seven
+/// actions inline, which meant a host app using the default
+/// [PdfReaderToolbar] presented a visibly different (more crowded)
+/// toolbar than the plugin's own chrome for the exact same feature set —
+/// a `showAppBar:false` host and a `showAppBar:true` reader no longer
+/// looked or behaved the same.
+///
+/// This now mirrors the plugin's layout exactly: Search, Notes,
+/// Highlights, Bookmarks stay as individual always-visible icons; Jump to
+/// page, Appearance, and Reading settings are grouped into one
+/// `PopupMenuButton` (icon: `Icons.more_vert_rounded`), in the same order,
+/// with the same icons/labels the plugin's overflow menu uses. No new
+/// controllers or state were introduced — every action still forwards to
+/// the exact same [PdfReaderActions] method it always called; only the
+/// arrangement of existing buttons changed. The `show*` flags keep their
+/// original meaning (whether an action is available at all); for
+/// `showJumpToPage` / `showAppearance` / `showReadingSettings` they now
+/// control whether that action's *entry inside the overflow menu*
+/// appears, and the overflow button itself is omitted entirely if none of
+/// the three are enabled.
+///
+/// Host apps that prefer a fully custom arrangement can still compose
+/// [BookmarkButton], [NotesButton], [HighlightsButton], [SearchButton],
+/// [JumpToPageButton], [AppearanceButton], and [ReadingSettingsButton]
+/// directly instead of using this composite widget.
 class PdfReaderToolbar extends StatelessWidget {
   const PdfReaderToolbar({
     super.key,
@@ -176,17 +226,64 @@ class PdfReaderToolbar extends StatelessWidget {
   final bool showReadingSettings;
 
   @override
-  Widget build(BuildContext context) => Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (showSearch) SearchButton(actions: actions, color: color),
-          if (showNotes) NotesButton(actions: actions, color: color),
-          if (showHighlights) HighlightsButton(actions: actions, color: color),
-          if (showBookmarks) BookmarkButton(actions: actions, color: color),
-          if (showJumpToPage) JumpToPageButton(actions: actions, color: color),
-          if (showAppearance) AppearanceButton(actions: actions, color: color),
-          if (showReadingSettings)
-            ReadingSettingsButton(actions: actions, color: color),
-        ],
-      );
+  Widget build(BuildContext context) {
+    final hasOverflowItems =
+        showJumpToPage || showAppearance || showReadingSettings;
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (showSearch) SearchButton(actions: actions, color: color),
+        if (showNotes) NotesButton(actions: actions, color: color),
+        if (showHighlights) HighlightsButton(actions: actions, color: color),
+        if (showBookmarks) BookmarkButton(actions: actions, color: color),
+        if (hasOverflowItems)
+          PopupMenuButton<_HostOverflowAction>(
+            icon: Icon(Icons.more_vert_rounded, color: color),
+            tooltip: 'More',
+            onSelected: (action) {
+              switch (action) {
+                case _HostOverflowAction.jumpToPage:
+                  actions.jumpToPage();
+                case _HostOverflowAction.appearance:
+                  actions.showAppearanceSelector();
+                case _HostOverflowAction.readingSettings:
+                  actions.showReadingSettings();
+              }
+            },
+            itemBuilder: (context) => [
+              if (showJumpToPage)
+                const PopupMenuItem(
+                  value: _HostOverflowAction.jumpToPage,
+                  child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.redo_rounded),
+                    title: Text('Jump to page'),
+                  ),
+                ),
+              if (showAppearance)
+                PopupMenuItem(
+                  value: _HostOverflowAction.appearance,
+                  child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(AppearanceButton.iconFor(
+                      actions.appearanceMode,
+                    )),
+                    title: const Text('Appearance'),
+                  ),
+                ),
+              if (showReadingSettings)
+                const PopupMenuItem(
+                  value: _HostOverflowAction.readingSettings,
+                  child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.tune_rounded),
+                    title: Text('Reading settings'),
+                  ),
+                ),
+            ],
+          ),
+      ],
+    );
+  }
 }

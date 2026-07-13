@@ -74,6 +74,16 @@ class PdfViewerTheme {
 /// leaf widgets ([_AppBarWithSearch]) that call `Theme.of(context)` in
 /// their own, independently-triggered `build()` — never passed down as a
 /// value captured higher in the tree.
+///
+/// ### Production-pass fix — appearance now reaches the viewer surface too
+///
+/// The rule above still holds: nothing here calls `Theme.of(context)`.
+/// The background color painted behind [_PdfViewerCore] (see
+/// [_buildOverlayStack]) is fed from `_appearance.themeData` directly — a
+/// plain getter, not an inherited lookup — via a `ListenableBuilder` that
+/// listens to `_appearance` only and passes [_PdfViewerCore] through as
+/// its `child`. This means the color updates on every appearance change
+/// without ever reconstructing `SfPdfViewer`.
 class PdfReadingTrackerViewer extends StatefulWidget {
   const PdfReadingTrackerViewer({
     super.key,
@@ -97,9 +107,9 @@ class PdfReadingTrackerViewer extends StatefulWidget {
     this.showReadingSettingsToggle = true,
     this.onReadingSettingsChanged,
   }) : assert(
-          (assetPath != null) != (filePath != null),
-          'Provide exactly one of assetPath or filePath.',
-        );
+  (assetPath != null) != (filePath != null),
+  'Provide exactly one of assetPath or filePath.',
+  );
 
   final String pdfId;
   final String pdfTitle;
@@ -141,7 +151,7 @@ class PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
   late final DndService _dndService;
 
   final GlobalKey<sf.SfPdfViewerState> _sfViewerKey =
-      GlobalKey<sf.SfPdfViewerState>();
+  GlobalKey<sf.SfPdfViewerState>();
 
   bool _isLoading = true;
   String? _error;
@@ -152,6 +162,15 @@ class PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
 
   bool _scrollDetectionActive = false;
 
+  /// The `BuildContext` supplied to [_buildBody] on the most recent build
+  /// — a genuine descendant of the top-level `AnimatedTheme`, unlike the
+  /// bare `context` getter inherited from `State` (which sits *above*
+  /// `AnimatedTheme` since it is built inside `build()`). Every dialog /
+  /// bottom sheet this widget opens must use this (falling back to
+  /// `context` only if a build genuinely hasn't happened yet) so
+  /// Light/Dark/System actually reaches them.
+  BuildContext? _readerContext;
+
   /// Dedicated notifier for search-bar visibility, kept in sync with
   /// [_searchVisible] inside [_toggleSearch]. This exists solely so
   /// [readerListenable] can notify host toolbars (e.g. `SearchButton`)
@@ -159,15 +178,16 @@ class PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
   /// field and triggers a rebuild only of this widget's own subtree via
   /// `setState`, which a host app's external toolbar never observes.
   late final ValueNotifier<bool> _searchVisibleNotifier =
-      ValueNotifier<bool>(_searchVisible);
+  ValueNotifier<bool>(_searchVisible);
 
   /// Public facade for triggering reader actions and reading live counts
   /// from outside this widget. See [PdfReaderActions].
   late final PdfReaderActions readerActions = PdfReaderActions(this);
 
   /// Notifies whenever bookmark/highlight/note counts, search visibility,
-  /// or appearance/reading-settings state changes. Merges the same
-  /// notifiers the plugin's own app bar already listens to.
+  /// appearance/reading-settings state, or immersive chrome visibility
+  /// changes. Merges the same notifiers the plugin's own app bar already
+  /// listens to.
   late final Listenable readerListenable = Listenable.merge([
     _ctrl.bookmarksNotifier,
     _ctrl.highlightNotifier,
@@ -175,6 +195,7 @@ class PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
     _ctrl.pageNotifier,
     _appearance,
     _readingSettings,
+    _immersiveVisibility,
     _searchVisibleNotifier,
   ]);
 
@@ -189,6 +210,17 @@ class PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
   int get totalPages => _ctrl.totalPages;
   bool get isBookmarkedOnCurrentPage =>
       _ctrl.bookmarks.any((b) => b.page == _ctrl.currentPage);
+
+  /// Whether Immersive Mode is currently enabled in Reading Settings.
+  /// Lets a host app (`showAppBar: false`) keep its own chrome in sync
+  /// with the plugin's immersive behaviour.
+  bool get immersiveModeEnabled => _readingSettings.value.immersiveModeEnabled;
+
+  /// Whether the reader chrome (app bar / bottom bar / FAB) is currently
+  /// visible under Immersive Mode. Always `true` when Immersive Mode is
+  /// off. A host app can listen to [readerListenable] and read this to
+  /// hide/show its own app bar in lockstep with the plugin's chrome.
+  bool get immersiveChromeVisible => _immersiveVisibility.chromeVisible;
 
   // ── Public action wrappers — each forwards to the single existing
   // private handler, so there is exactly one implementation per action. ──
@@ -236,15 +268,15 @@ class PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
     _ctrl.init();
 
     _appearance =
-        AppearanceController(initialMode: widget.initialAppearanceMode)..init();
+    AppearanceController(initialMode: widget.initialAppearanceMode)..init();
 
     _readingSettings =
-        ReadingSettingsController(initial: widget.initialReadingSettings)
-          ..init();
+    ReadingSettingsController(initial: widget.initialReadingSettings)
+      ..init();
     _readingSettings.addListener(_onReadingSettingsChanged);
 
     _immersiveVisibility =
-        ImmersiveVisibilityController(settings: _readingSettings)..init();
+    ImmersiveVisibilityController(settings: _readingSettings)..init();
 
     _dndService = DndServiceProvider.create();
   }
@@ -282,8 +314,9 @@ class PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
   }
 
   Future<void> _showAppearanceSelector() async {
+    final ctx = _readerContext ?? context;
     await showAppearanceSelectorSheet(
-      context: context,
+      context: ctx,
       current: _appearance.mode,
       onSelected: (mode) {
         _appearance.setMode(mode);
@@ -293,8 +326,9 @@ class PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
   }
 
   Future<void> _showReadingSettings() async {
+    final ctx = _readerContext ?? context;
     await showReadingSettingsSheet(
-      context: context,
+      context: ctx,
       controller: _readingSettings,
       dndService: _dndService,
     );
@@ -313,23 +347,24 @@ class PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
   Future<void> _handleAddNoteTap() async {
     if (_dialogOpen) return;
     _dialogOpen = true;
+    final ctx = _readerContext ?? context;
 
     final snapshot = _ctrl.snapshotSelection;
     final capturedText = snapshot?.selectedText ?? '';
     final capturedPage = snapshot?.page;
     final capturedRects = snapshot?.textLines
-            .map((l) => NoteRect(
-                  left: l.bounds.left,
-                  top: l.bounds.top,
-                  right: l.bounds.right,
-                  bottom: l.bounds.bottom,
-                ))
-            .toList(growable: false) ??
+        .map((l) => NoteRect(
+      left: l.bounds.left,
+      top: l.bounds.top,
+      right: l.bounds.right,
+      bottom: l.bounds.bottom,
+    ))
+        .toList(growable: false) ??
         const <NoteRect>[];
 
     try {
       final result = await showSafeNoteDialog(
-        context: context,
+        context: ctx,
         title: capturedText.isNotEmpty
             ? 'Note for: "${capturedText.length > 40 ? '${capturedText.substring(0, 40)}…' : capturedText}"'
             : 'Add note — Page ${_ctrl.currentPage + 1}',
@@ -347,9 +382,9 @@ class PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
       );
     } on Exception catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(
         content: Text('Could not save note: $e'),
-        backgroundColor: Theme.of(context).colorScheme.error,
+        backgroundColor: Theme.of(ctx).colorScheme.error,
       ));
     } finally {
       _ctrl.clearSnapshot();
@@ -358,8 +393,9 @@ class PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
   }
 
   Future<void> _handleNotesIconTap() async {
+    final ctx = _readerContext ?? context;
     final page = await showNotesSheet(
-      context: context,
+      context: ctx,
       notes: _ctrl.notes,
       currentPage: _ctrl.currentPage,
       onDelete: _ctrl.removeNote,
@@ -371,9 +407,10 @@ class PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
   Future<void> _handleBookmarkTap() async {
     if (_dialogOpen) return;
     _dialogOpen = true;
+    final ctx = _readerContext ?? context;
     try {
       final result = await showSafeNoteDialog(
-        context: context,
+        context: ctx,
         title: 'Bookmark page ${_ctrl.currentPage + 1}',
         initialText: '',
         allowDelete: false,
@@ -385,9 +422,9 @@ class PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
           note: (note == null || note.isEmpty) ? null : note);
     } on BookmarkServiceException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(
         content: Text('Could not save bookmark: $e'),
-        backgroundColor: Theme.of(context).colorScheme.error,
+        backgroundColor: Theme.of(ctx).colorScheme.error,
       ));
     } finally {
       _dialogOpen = false;
@@ -395,8 +432,9 @@ class PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
   }
 
   Future<void> _handleBookmarksIconTap() async {
+    final ctx = _readerContext ?? context;
     final page = await showBookmarksSheet(
-      context: context,
+      context: ctx,
       bookmarks: _ctrl.bookmarks,
       currentPage: _ctrl.currentPage,
       onDelete: _ctrl.removeBookmark,
@@ -406,8 +444,9 @@ class PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
   }
 
   Future<void> _handleHighlightsIconTap() async {
+    final ctx = _readerContext ?? context;
     final page = await showHighlightsSheet(
-      context: context,
+      context: ctx,
       highlights: _ctrl.highlights,
       currentPage: _ctrl.currentPage,
       onDelete: _ctrl.removeHighlight,
@@ -419,9 +458,10 @@ class PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
   Future<void> _handleJumpToPage() async {
     if (_dialogOpen) return;
     _dialogOpen = true;
+    final ctx = _readerContext ?? context;
     try {
       final page = await showDialog<int>(
-        context: context,
+        context: ctx,
         barrierDismissible: true,
         builder: (_) => _JumpToPageDialog(
           currentPage: _ctrl.currentPage,
@@ -475,20 +515,28 @@ class PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
   /// `Theme.of(context)` is used here ONLY for the loading/error branches,
   /// which never mount `SfPdfViewer` — safe, since there is nothing below
   /// them for an inherited-widget rebuild storm to reach.
+  ///
+  /// `context` here is a descendant of the top-level `AnimatedTheme` (this
+  /// method runs inside `Builder(builder: _buildBody)`, which is
+  /// `AnimatedTheme`'s `child`) — captured into [_readerContext] so every
+  /// dialog/sheet opened by this state resolves the reader's own
+  /// appearance instead of the host app's ambient theme.
   Widget _buildBody(BuildContext context) {
+    _readerContext = context;
+
     if (_isLoading) {
       final cs = Theme.of(context).colorScheme;
       return widget.showAppBar
           ? Scaffold(
-              appBar: AppBar(
-                title: Text(widget.pdfTitle, overflow: TextOverflow.ellipsis),
-                backgroundColor:
-                    widget.theme?.appBarBackgroundColor ?? cs.primaryContainer,
-                foregroundColor: widget.theme?.appBarForegroundColor ??
-                    cs.onPrimaryContainer,
-              ),
-              body: const Center(child: CircularProgressIndicator()),
-            )
+        appBar: AppBar(
+          title: Text(widget.pdfTitle, overflow: TextOverflow.ellipsis),
+          backgroundColor:
+          widget.theme?.appBarBackgroundColor ?? cs.primaryContainer,
+          foregroundColor: widget.theme?.appBarForegroundColor ??
+              cs.onPrimaryContainer,
+        ),
+        body: const Center(child: CircularProgressIndicator()),
+      )
           : const Center(child: CircularProgressIndicator());
     }
 
@@ -497,15 +545,15 @@ class PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
       final errorBody = _ErrorView(message: _error!, onRetry: _ctrl.init);
       return widget.showAppBar
           ? Scaffold(
-              appBar: AppBar(
-                title: Text(widget.pdfTitle, overflow: TextOverflow.ellipsis),
-                backgroundColor:
-                    widget.theme?.appBarBackgroundColor ?? cs.primaryContainer,
-                foregroundColor: widget.theme?.appBarForegroundColor ??
-                    cs.onPrimaryContainer,
-              ),
-              body: errorBody,
-            )
+        appBar: AppBar(
+          title: Text(widget.pdfTitle, overflow: TextOverflow.ellipsis),
+          backgroundColor:
+          widget.theme?.appBarBackgroundColor ?? cs.primaryContainer,
+          foregroundColor: widget.theme?.appBarForegroundColor ??
+              cs.onPrimaryContainer,
+        ),
+        body: errorBody,
+      )
           : errorBody;
     }
 
@@ -518,6 +566,18 @@ class PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
   /// built exactly once here and handed down as a `child` to the
   /// `_readingSettings` `ListenableBuilder` below, so neither an
   /// appearance change nor a reading-settings change ever reconstructs it.
+  ///
+  /// ### Production-pass fix — FAB must exist in host mode too
+  ///
+  /// Previously this method returned `overlayStack` immediately when
+  /// `showAppBar` was false, *before* the FAB was ever built. A host app
+  /// using `showAppBar: false` (its own Scaffold/AppBar) has no
+  /// `Scaffold.floatingActionButton` slot supplied by the plugin, so the
+  /// Bookmark + Add Note FAB silently never appeared. The FAB is now
+  /// built unconditionally and, in host mode, manually positioned in the
+  /// same bottom-right spot `Scaffold` uses by default — no Scaffold is
+  /// introduced, so the host's own Scaffold/AppBar/screen-protection tree
+  /// is untouched.
   Widget _buildLoadedContent() {
     final viewerCore = _PdfViewerCore(
       key: ValueKey(_resolvedFilePath),
@@ -555,10 +615,24 @@ class PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
     );
 
     final overlayStack = _buildOverlayStack(viewerCore);
-
-    if (!widget.showAppBar) return overlayStack;
-
     final fab = widget.showBookmarkFab ? _buildAnimatedFab() : null;
+
+    if (!widget.showAppBar) {
+      if (fab == null) return overlayStack;
+      // No Scaffold exists in this branch (the host app owns its own), so
+      // the FAB is placed manually in the conventional bottom-right
+      // position instead of via `Scaffold.floatingActionButton`.
+      return Stack(
+        children: [
+          Positioned.fill(child: overlayStack),
+          Positioned(
+            right: 16,
+            bottom: 16,
+            child: SafeArea(child: fab),
+          ),
+        ],
+      );
+    }
 
     // Isolated ListenableBuilder: rebuilds ONLY the thin Scaffold-shape
     // decision on a reading-settings change. `overlayStack` (and
@@ -585,7 +659,7 @@ class PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
     return Scaffold(
       appBar: PreferredSize(
         preferredSize:
-            Size.fromHeight(kToolbarHeight + (_searchVisible ? 56.0 : 0.0)),
+        Size.fromHeight(kToolbarHeight + (_searchVisible ? 56.0 : 0.0)),
         child: ListenableBuilder(
           listenable: Listenable.merge([
             _ctrl.bookmarksNotifier,
@@ -739,8 +813,27 @@ class PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
   // Overlay stack
   // -------------------------------------------------------------------------
 
+  /// ### Production-pass fix — appearance must reach the viewer surface
+  ///
+  /// The returned stack is now wrapped in a `ListenableBuilder` that
+  /// listens to `_appearance` only (never `Theme.of(context)`) and paints
+  /// `_appearance.themeData.colorScheme.surface` behind everything,
+  /// including the page-spacing gaps around `SfPdfViewer` that the PDF
+  /// renderer itself doesn't theme. `stack` (containing `_PdfViewerCore`)
+  /// is passed as `child`, so `SfPdfViewer` is still never reconstructed
+  /// by an appearance change — see the class-level architecture note.
+  ///
+  /// ### Production-pass fix — progress overlay now respects Immersive
+  /// Mode chrome visibility
+  ///
+  /// Previously the bottom progress pill had its own, fully independent
+  /// 2-second idle timer and never consulted `_immersiveVisibility`, so it
+  /// could stay visible (or hidden) out of sync with the rest of the
+  /// immersive chrome. It now also hides whenever Immersive Mode is on
+  /// and the chrome has been tapped hidden — its own idle-based
+  /// auto-hide behaviour for normal (non-immersive) use is unchanged.
   Widget _buildOverlayStack(Widget viewerCore) {
-    return Stack(
+    final stack = Stack(
       children: [
         ListenableBuilder(
           listenable: _readingSettings,
@@ -761,14 +854,14 @@ class PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
               right: 12,
               child: (widget.enableHighlight && pending != null)
                   ? AnnotationActionBar(
-                      key: const ValueKey('annotation_action_bar'),
-                      selectedText: pending.selectedText,
-                      onCommit: _commitAnnotation,
-                      onDismiss: () {
-                        _ctrl.captureTextSelection(null, null, null);
-                        _ctrl.clearSnapshot();
-                      },
-                    )
+                key: const ValueKey('annotation_action_bar'),
+                selectedText: pending.selectedText,
+                onCommit: _commitAnnotation,
+                onDismiss: () {
+                  _ctrl.captureTextSelection(null, null, null);
+                  _ctrl.clearSnapshot();
+                },
+              )
                   : const SizedBox.shrink(),
             );
           },
@@ -779,17 +872,41 @@ class PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
               _ctrl.pageNotifier,
               _ctrl.savingNotifier,
               _ctrl.notesNotifier,
+              _readingSettings,
+              _immersiveVisibility,
             ]),
-            builder: (_, __) => ReaderProgressOverlay(
-              currentPage: _ctrl.currentPage,
-              totalPages: _ctrl.totalPages,
-              progressPct: _ctrl.progressPct,
-              displayPercent: _ctrl.displayPercent,
-              isSaving: _ctrl.isSavingProgress,
-              noteCountOnCurrentPage: _ctrl.noteCountOnCurrentPage,
-            ),
+            builder: (_, __) {
+              final immersiveOn = _readingSettings.value.immersiveModeEnabled;
+              final hiddenByImmersive =
+                  immersiveOn && !_immersiveVisibility.chromeVisible;
+              return IgnorePointer(
+                ignoring: hiddenByImmersive,
+                child: AnimatedOpacity(
+                  duration: AppDurations.medium,
+                  curve: AppDurations.curve,
+                  opacity: hiddenByImmersive ? 0.0 : 1.0,
+                  child: ReaderProgressOverlay(
+                    currentPage: _ctrl.currentPage,
+                    totalPages: _ctrl.totalPages,
+                    progressPct: _ctrl.progressPct,
+                    displayPercent: _ctrl.displayPercent,
+                    isSaving: _ctrl.isSavingProgress,
+                    noteCountOnCurrentPage: _ctrl.noteCountOnCurrentPage,
+                  ),
+                ),
+              );
+            },
           ),
       ],
+    );
+
+    return ListenableBuilder(
+      listenable: _appearance,
+      builder: (context, child) => ColoredBox(
+        color: _appearance.themeData.colorScheme.surface,
+        child: child,
+      ),
+      child: stack,
     );
   }
 }
@@ -1143,7 +1260,7 @@ class _PdfViewerCore extends StatelessWidget {
           onDocumentLoadFailed('${d.error}: ${d.description}'),
       onTextSelectionChanged: enableHighlight
           ? (sf.PdfTextSelectionChangedDetails d) =>
-              onTextSelectionChanged(d.selectedText, d.globalSelectedRegion)
+          onTextSelectionChanged(d.selectedText, d.globalSelectedRegion)
           : null,
     );
 
