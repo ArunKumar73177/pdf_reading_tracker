@@ -26,6 +26,17 @@ import '../reading_settings_controller.dart';
 /// - Using `MediaQuery.sizeOf` (not `MediaQuery.of(context).size`) to
 ///   avoid this widget rebuilding on *every* MediaQuery change (e.g.
 ///   keyboard insets) — `sizeOf` only depends on the screen size specifically.
+///
+/// ### Final Reader-integration pass — Do Not Disturb switch is now live
+///
+/// Previously hardcoded to `value: false, onChanged: null` ("not usable
+/// yet"). It now reflects the persisted [ReadingSettings.dndEnabled] and,
+/// when the platform actually supports it
+/// (`dndService.capability.isUsable`), routes user taps to
+/// [ReadingSettingsController.setDndEnabled] — the single method that
+/// implements the "check permission → enable, else open Settings" flow.
+/// On platforms where DND isn't usable (iOS, etc.) the switch stays
+/// disabled exactly as before, and the badge below it still explains why.
 Future<void> showReadingSettingsSheet({
   required BuildContext context,
   required ReadingSettingsController controller,
@@ -118,7 +129,7 @@ class _ReadingSettingsSheet extends StatelessWidget {
                             title: const Text('Immersive Reading Mode'),
                             subtitle: const Text(
                               'Hide the app bar and controls — tap the '
-                              'page to show them again',
+                                  'page to show them again',
                             ),
                             secondary: const Icon(Icons.fullscreen_rounded),
                             value: settings.immersiveModeEnabled,
@@ -131,7 +142,7 @@ class _ReadingSettingsSheet extends StatelessWidget {
                             subtitle: Text(
                               settings.immersiveModeEnabled
                                   ? 'Controls fade out automatically while '
-                                      'reading'
+                                  'reading'
                                   : 'Only applies while Immersive Mode is on',
                             ),
                             secondary: const Icon(Icons.visibility_off_rounded),
@@ -146,7 +157,7 @@ class _ReadingSettingsSheet extends StatelessWidget {
                             title: const Text('Keep Screen Awake'),
                             subtitle: const Text(
                               'Prevent the screen from sleeping while '
-                              'reading',
+                                  'reading',
                             ),
                             secondary: const Icon(Icons.light_mode_outlined),
                             value: settings.keepScreenAwakeEnabled,
@@ -163,14 +174,16 @@ class _ReadingSettingsSheet extends StatelessWidget {
                               Icons.do_not_disturb_on_outlined,
                               color: cs.onSurfaceVariant,
                             ),
-                            value: false,
-                            onChanged: null, // not usable yet
+                            value: settings.dndEnabled,
+                            onChanged: dndService.capability.isUsable
+                                ? (v) => controller.setDndEnabled(v)
+                                : null,
                           ),
                           Padding(
                             padding:
-                                const EdgeInsets.only(left: AppSpacing.xxl + 8),
+                            const EdgeInsets.only(left: AppSpacing.xxl + 8),
                             child:
-                                _DndBadge(level: dndService.capability.level),
+                            _DndBadge(level: dndService.capability.level),
                           ),
                           // Bottom breathing room so the last row/badge
                           // never sits flush against the scroll edge.

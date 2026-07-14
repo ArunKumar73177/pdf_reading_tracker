@@ -9,15 +9,14 @@ import io.flutter.plugin.common.MethodChannel.Result
 /**
  * PdfReadingTrackerPlugin
  *
- * Phase 1 responsibility ONLY:
- * - Register the MethodChannel.
- * - Receive method calls from Dart.
- * - Forward them to [DndManager].
+ * Registers the MethodChannel and routes calls to [DndManager]. No DND
+ * business logic lives here.
  *
- * No Do Not Disturb business logic lives here. All real implementation
- * (permission checks, NotificationManager calls, interruption-filter
- * reads/writes) belongs in [DndManager] and is intentionally left as
- * TODO stubs there until Phase 2.
+ * **Final Reader-integration pass:** the `disableDnd` case now reads an
+ * optional integer `"filter"` argument and forwards it to
+ * [DndManager.disableDnd] as the exact interruption filter to restore.
+ * The method name and every other case are unchanged — this is purely an
+ * additional, optional argument read via `call.argument`.
  */
 class PdfReadingTrackerPlugin :
     FlutterPlugin,
@@ -53,7 +52,8 @@ class PdfReadingTrackerPlugin :
             }
 
             "disableDnd" -> {
-                dndManager.disableDnd()
+                val filter = call.argument<Int>("filter")
+                dndManager.disableDnd(filter)
                 result.success(null)
             }
             "getCurrentInterruptionFilter" -> {

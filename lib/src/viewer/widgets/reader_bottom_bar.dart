@@ -1,4 +1,4 @@
-import 'dart:async';
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
@@ -11,26 +11,47 @@ import '../../theme/theme_extensions.dart';
 
 /// Compact floating progress pill shown at the bottom of the PDF viewport.
 ///
-/// ### Auto-hide behaviour (Phase 2)
-/// The pill fades in on genuine page changes (page turns, search jumps,
-/// bookmark navigation, continue-reading restore, manual jump-to-page) and
-/// fades out automatically after ~2 seconds of inactivity. It never stays
-/// permanently visible and never rebuilds [SfPdfViewer] — this widget is
-/// driven purely by the same [ListenableBuilder] the parent already uses
-/// for `pageNotifier` / `savingNotifier` / `notesNotifier`.
+/// ### Redesign note — visibility ownership moved to the caller
 ///
-/// ### Debounced visibility (rapid-scroll fix)
-/// A naive implementation would cancel and recreate a [Timer] on every
-/// single page-change notification, which during a fast fling through a
-/// continuous-mode document can fire many times per second — churning
-/// through many short-lived [Timer] allocations for no visible benefit
-/// (opacity never actually changes mid-fling since the pill is already
-/// visible). Instead, a single long-lived [Timer.periodic] "watchdog" is
-/// created once per visibility cycle and simply checks elapsed time since
-/// the last page change; it is cancelled only once the reader has actually
-/// gone idle for the hide duration. This keeps rapid scrolling free of
-/// [Timer] churn while still hiding reliably ~2 seconds after the user
-/// stops turning pages.
+/// This widget used to be a [StatefulWidget] that ran its own independent
+/// `Timer.periodic` "watchdog": it faded itself out after ~2 seconds of
+/// inactivity and faded back in on every page change, entirely on its
+/// own. That had two problems:
+///
+/// 1. It fired **regardless of Immersive Mode** — meaning the pill could
+///    silently auto-hide even in classic (non-immersive) mode, where the
+///    reader chrome is supposed to stay permanently visible.
+/// 2. It duplicated (and could visually race with) the tap-driven
+///    auto-hide timer already owned by `ImmersiveVisibilityController`,
+///    which is the single source of truth for "is the reader chrome
+///    showing right now" for the app bar and FAB.
+///
+/// This widget is now a pure, stateless, timer-free function of its
+/// constructor parameters. The caller
+/// (`PdfReadingTrackerViewerState._buildOverlayStack`) is solely
+/// responsible for visibility: permanently shown in classic mode, tied to
+/// the same `ImmersiveVisibilityController.chromeVisible` signal the app
+/// bar and FAB already use in immersive mode.
+///
+/// ### Positioning fix
+///
+/// This widget deliberately does **not** wrap itself in a [Positioned].
+/// [Positioned] is a [ParentDataWidget]: it only takes effect when it is
+/// the outermost widget sitting directly inside a [Stack], with nothing
+/// but non-render-object widgets (like [ListenableBuilder]) between them.
+/// If it is nested *inside* other render-object widgets — e.g.
+/// `Stack(children: [ListenableBuilder(builder: (_, __) => IgnorePointer(
+/// child: AnimatedOpacity(child: Positioned(...))))])` — the parent-data
+/// offsets it sets never reach the [Stack]'s actual render child and are
+/// silently dropped, so `left` / `right` / `bottom` have no effect. That
+/// was exactly how this widget was previously being used, which meant
+/// the "always overlay above the PDF at the bottom" guarantee wasn't
+/// reliably held. The caller now wraps this widget as
+/// `Positioned(left: ..., right: ..., bottom: ..., child: <visibility
+/// wrappers> child: ReaderProgressOverlay(...))` — [Positioned] outermost,
+/// [IgnorePointer] / [AnimatedSlide] / [AnimatedOpacity] nested *inside*
+/// it — which is the pattern the plugin's own immersive app bar already
+/// (correctly) uses.
 ///
 /// ### Note badge (secondary indicator)
 /// When [noteCountOnCurrentPage] > 0, a small note icon appears to the
@@ -38,7 +59,7 @@ import '../../theme/theme_extensions.dart';
 /// indicator is the in-PDF highlight annotation added by
 /// [PdfViewerController.addNote].
 ///
-/// ### Progress display correctness (Phase 2)
+/// ### Progress display correctness
 /// [progressPct] (a continuous double) drives the fill-bar width and is
 /// already mathematically exact — it reaches precisely 100.0 on the last
 /// page with no rounding involved. [displayPercent] (a pre-computed,
@@ -50,14 +71,15 @@ import '../../theme/theme_extensions.dart';
 /// ### Appearance system
 /// All colours come from [ReaderColors] — looked up once per build via
 /// `Theme.of(context).extension<ReaderColors>()` — so this pill
-/// automatically follows Light / Dark / Follow System.
+/// automatically follows Light / Dark / Follow System. A subtle
+/// frosted-glass blur sits behind the pill for a premium, modern
+/// (Kindle / Moon+ Reader-style) feel.
 ///
 /// ### Performance
-/// Wrapped in a [RepaintBoundary]. Colour lookup is a single
-/// [ThemeExtension] read per build, not per paint. The watchdog timer
-/// ticks at a coarse 200ms interval and does no allocation beyond a single
-/// [DateTime.now()] comparison per tick.
-class ReaderProgressOverlay extends StatefulWidget {
+/// Wrapped in a [RepaintBoundary]. No [Timer], no [ChangeNotifier]
+/// subscription of its own — a pure presentational widget. Colour lookup
+/// is a single [ThemeExtension] read per build.
+class ReaderProgressOverlay extends StatelessWidget {
   const ReaderProgressOverlay({
     super.key,
     required this.currentPage,
@@ -86,163 +108,104 @@ class ReaderProgressOverlay extends StatefulWidget {
   /// this is O(1) — no inline filtering in the build method.
   final int noteCountOnCurrentPage;
 
-  @override
-  State<ReaderProgressOverlay> createState() => _ReaderProgressOverlayState();
-}
-
-class _ReaderProgressOverlayState extends State<ReaderProgressOverlay> {
-  static const Duration _kVisibleDuration = Duration(seconds: 2);
-  static const Duration _kWatchdogInterval = Duration(milliseconds: 200);
-
-  bool _visible = true;
-  DateTime _lastActivityAt = DateTime.now();
-  Timer? _watchdog;
-
-  @override
-  void initState() {
-    super.initState();
-    _registerActivity();
-  }
-
-  @override
-  void didUpdateWidget(covariant ReaderProgressOverlay old) {
-    super.didUpdateWidget(old);
-    // Show only on a genuine page change (page jumps, search, bookmarks,
-    // continue-reading restore, manual nav — all of these flow through
-    // PdfViewerController._updateCurrentPage, the only thing that changes
-    // `currentPage`). Saving-spinner and note-count changes never
-    // re-trigger visibility on their own.
-    if (old.currentPage != widget.currentPage) {
-      _registerActivity();
-    }
-  }
-
-  /// Cheap, allocation-free on the hot path: just records a timestamp and
-  /// ensures a single watchdog timer is running. Safe to call as often as
-  /// once per scroll-driven page change during a fast fling — it never
-  /// creates a new [Timer] if one is already active.
-  void _registerActivity() {
-    _lastActivityAt = DateTime.now();
-    if (!_visible) {
-      setState(() => _visible = true);
-    }
-    _watchdog ??= Timer.periodic(_kWatchdogInterval, _checkIdle);
-  }
-
-  void _checkIdle(Timer timer) {
-    if (DateTime.now().difference(_lastActivityAt) >= _kVisibleDuration) {
-      timer.cancel();
-      _watchdog = null;
-      if (mounted && _visible) {
-        setState(() => _visible = false);
-      }
-    }
-  }
-
-  @override
-  void dispose() {
-    _watchdog?.cancel();
-    _watchdog = null;
-    super.dispose();
-  }
+  static const double _kHeight = 40.0;
+  static const double _kBlurSigma = 18.0;
 
   @override
   Widget build(BuildContext context) {
     final rc = Theme.of(context).extension<ReaderColors>() ??
         ReaderColors.forBrightness(Theme.of(context).brightness);
 
-    final pageLabel = widget.totalPages > 0
-        ? 'Page ${widget.currentPage + 1} / ${widget.totalPages}'
+    final pageLabel = totalPages > 0
+        ? 'Page ${currentPage + 1} of $totalPages'
         : 'Loading…';
-    final pct = widget.totalPages > 0 ? '${widget.displayPercent}%' : '';
+    final pct = totalPages > 0 ? '$displayPercent%' : '';
 
-    return Positioned(
-      left: AppSpacing.lg,
-      right: AppSpacing.lg,
-      bottom: AppSpacing.lg,
-      child: IgnorePointer(
-        // While fading out, the pill shouldn't intercept taps meant for
-        // the PDF content beneath it.
-        ignoring: !_visible,
-        child: AnimatedOpacity(
-          opacity: _visible ? 1.0 : 0.0,
-          duration: AppDurations.medium,
-          curve: AppDurations.curve,
-          child: RepaintBoundary(
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(AppRadius.pill),
-              child: Container(
-                height: 44,
-                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-                decoration: BoxDecoration(
-                  color: rc.overlayBackground,
-                  borderRadius:
-                      const BorderRadius.all(Radius.circular(AppRadius.pill)),
-                ),
-                child: Row(
-                  children: [
-                    // ── Note badge (secondary indicator) ─────────────
-                    if (widget.noteCountOnCurrentPage > 0) ...[
-                      Tooltip(
-                        message: '${widget.noteCountOnCurrentPage} '
-                            'note${widget.noteCountOnCurrentPage == 1 ? '' : 's'} '
-                            'on this page',
-                        child: Icon(
-                          Icons.sticky_note_2_rounded,
-                          size: 14,
-                          color: rc.noteBadge,
-                        ),
-                      ),
-                      const SizedBox(width: AppSpacing.sm),
-                    ],
-
-                    // ── Progress bar ──────────────────────────────────
-                    Expanded(
-                      child: _MiniProgressBar(
-                        progressPct: widget.progressPct,
-                        trackColor: rc.overlayTrack,
-                        fillColor: rc.overlayFill,
-                      ),
-                    ),
-
-                    const SizedBox(width: AppSpacing.md),
-
-                    // ── Page label ────────────────────────────────────
-                    Text(
-                      pageLabel,
-                      style: TextStyle(
-                        color: rc.overlayLabel,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-
-                    if (pct.isNotEmpty) ...[
-                      const SizedBox(width: AppSpacing.xs + 2),
-                      Text(pct,
-                          style: TextStyle(
-                              color: rc.overlayLabelSecondary, fontSize: 11)),
-                    ],
-
-                    // ── Saving spinner ────────────────────────────────
-                    AnimatedOpacity(
-                      opacity: widget.isSaving ? 1.0 : 0.0,
-                      duration: AppDurations.medium,
-                      child: Padding(
-                        padding: const EdgeInsets.only(left: AppSpacing.sm),
-                        child: SizedBox(
-                          width: 10,
-                          height: 10,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 1.5,
-                            color: rc.overlaySavingIndicator,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+    return RepaintBoundary(
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(AppRadius.pill),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: _kBlurSigma, sigmaY: _kBlurSigma),
+          child: Container(
+            height: _kHeight,
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+            decoration: BoxDecoration(
+              color: rc.overlayBackground,
+              borderRadius:
+              const BorderRadius.all(Radius.circular(AppRadius.pill)),
+              border: Border.all(
+                color: rc.overlayLabelSecondary.withAlpha(38),
+                width: 0.75,
               ),
+            ),
+            child: Row(
+              children: [
+                // ── Note badge (secondary indicator) ─────────────
+                if (noteCountOnCurrentPage > 0) ...[
+                  Tooltip(
+                    message: '$noteCountOnCurrentPage '
+                        'note${noteCountOnCurrentPage == 1 ? '' : 's'} '
+                        'on this page',
+                    child: Icon(
+                      Icons.sticky_note_2_rounded,
+                      size: 13,
+                      color: rc.noteBadge,
+                    ),
+                  ),
+                  const SizedBox(width: AppSpacing.sm),
+                ],
+
+                // ── Progress bar ──────────────────────────────────
+                Expanded(
+                  child: _MiniProgressBar(
+                    progressPct: progressPct,
+                    trackColor: rc.overlayTrack,
+                    fillColor: rc.overlayFill,
+                  ),
+                ),
+
+                const SizedBox(width: AppSpacing.md),
+
+                // ── Page label ────────────────────────────────────
+                Text(
+                  pageLabel,
+                  style: TextStyle(
+                    color: rc.overlayLabel,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.1,
+                  ),
+                ),
+
+                if (pct.isNotEmpty) ...[
+                  const SizedBox(width: AppSpacing.xs + 2),
+                  Text(
+                    pct,
+                    style: TextStyle(
+                      color: rc.overlayLabelSecondary,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+
+                // ── Saving spinner ────────────────────────────────
+                AnimatedOpacity(
+                  opacity: isSaving ? 1.0 : 0.0,
+                  duration: AppDurations.medium,
+                  child: Padding(
+                    padding: const EdgeInsets.only(left: AppSpacing.sm),
+                    child: SizedBox(
+                      width: 10,
+                      height: 10,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 1.5,
+                        color: rc.overlaySavingIndicator,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ),

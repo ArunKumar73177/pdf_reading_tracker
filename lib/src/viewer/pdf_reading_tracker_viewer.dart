@@ -84,6 +84,40 @@ class PdfViewerTheme {
 /// listens to `_appearance` only and passes [_PdfViewerCore] through as
 /// its `child`. This means the color updates on every appearance change
 /// without ever reconstructing `SfPdfViewer`.
+///
+/// ### Reader-UX redesign pass — chrome-visibility positioning fix
+///
+/// [_buildOverlayStack] previously placed [ReaderProgressOverlay] behind
+/// an `IgnorePointer` + `AnimatedOpacity` pair that sat **outside** (i.e.
+/// as an ancestor of) the `Positioned` that widget used to wrap itself
+/// in. `Positioned` only takes effect when it is the outermost widget
+/// directly inside a `Stack` — nesting it behind other render-object
+/// widgets like that silently drops its `left` / `right` / `bottom`
+/// offsets, so the pill was never reliably bottom-pinned. `Positioned` is
+/// now the outermost wrapper at the `Stack`-child call site, with the
+/// visibility machinery (`IgnorePointer` / `AnimatedSlide` /
+/// `AnimatedOpacity`) nested *inside* it — the same pattern already used
+/// (correctly) for the immersive app bar below. `ReaderProgressOverlay`
+/// itself is now a plain, stateless, timer-free presentational widget;
+/// see its own class doc.
+///
+/// ### Runtime hardening pass — scaffold selector desync fix
+///
+/// [_buildLoadedContent] chooses between [_buildImmersiveScaffold] and
+/// [_buildClassicScaffold] via a `ListenableBuilder`. This selector
+/// previously listened to `_readingSettings` only. `_immersiveVisibility`
+/// is a *derived* controller that reacts to `_readingSettings` changes
+/// internally (see [ImmersiveVisibilityController]) — under certain
+/// notifyListeners orderings (e.g. Immersive Mode already `true` when
+/// this widget first mounts, or a persisted-settings reload completing
+/// mid-frame) the scaffold-selection rebuild and the chrome-visibility
+/// rebuild could be triggered by two logically-related but separately
+/// scheduled notifications, leaving a window where stale visibility state
+/// could be read. The selector now listens to `Listenable.merge([
+/// _readingSettings, _immersiveVisibility])`, so both the "which shape of
+/// scaffold" decision and the "is chrome visible right now" decision are
+/// always evaluated together, against the freshest state, on every
+/// relevant change — with no second controller and no new timer.
 class PdfReadingTrackerViewer extends StatefulWidget {
   const PdfReadingTrackerViewer({
     super.key,
@@ -219,7 +253,10 @@ class PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
   /// Whether the reader chrome (app bar / bottom bar / FAB) is currently
   /// visible under Immersive Mode. Always `true` when Immersive Mode is
   /// off. A host app can listen to [readerListenable] and read this to
-  /// hide/show its own app bar in lockstep with the plugin's chrome.
+  /// hide/show its own app bar in lockstep with the plugin's chrome —
+  /// or, more simply, wrap its own chrome in [ImmersiveChromeVisibility]
+  /// (see `widgets/pdf_reader_toolbar.dart`) and never touch this getter
+  /// directly at all.
   bool get immersiveChromeVisible => _immersiveVisibility.chromeVisible;
 
   // ── Public action wrappers — each forwards to the single existing
@@ -270,15 +307,23 @@ class PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
     _appearance =
     AppearanceController(initialMode: widget.initialAppearanceMode)..init();
 
-    _readingSettings =
-    ReadingSettingsController(initial: widget.initialReadingSettings)
-      ..init();
+    // Final Reader-integration pass: `_dndService` is now created BEFORE
+    // `_readingSettings` (previously it was created last) so the same
+    // instance can be injected into `ReadingSettingsController`, which is
+    // now the sole owner of the actual DND enable/disable/restore-filter
+    // orchestration (see its class doc). Nothing else about this
+    // instance's lifecycle changes — it is still disposed exactly once,
+    // in `dispose()`, in the same relative position as before.
+    _dndService = DndServiceProvider.create();
+
+    _readingSettings = ReadingSettingsController(
+      initial: widget.initialReadingSettings,
+      dndService: _dndService,
+    )..init();
     _readingSettings.addListener(_onReadingSettingsChanged);
 
     _immersiveVisibility =
     ImmersiveVisibilityController(settings: _readingSettings)..init();
-
-    _dndService = DndServiceProvider.create();
   }
 
   @override
@@ -530,10 +575,17 @@ class PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
           ? Scaffold(
         appBar: AppBar(
           title: Text(widget.pdfTitle, overflow: TextOverflow.ellipsis),
-          backgroundColor:
-          widget.theme?.appBarBackgroundColor ?? cs.primaryContainer,
-          foregroundColor: widget.theme?.appBarForegroundColor ??
-              cs.onPrimaryContainer,
+          backgroundColor: widget.theme?.appBarBackgroundColor ?? cs.surface,
+          foregroundColor:
+          widget.theme?.appBarForegroundColor ?? cs.onSurface,
+          elevation: AppElevation.none,
+          surfaceTintColor: cs.surfaceTint,
+          shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.only(
+              bottomLeft: Radius.circular(AppRadius.lg),
+              bottomRight: Radius.circular(AppRadius.lg),
+            ),
+          ),
         ),
         body: const Center(child: CircularProgressIndicator()),
       )
@@ -547,10 +599,17 @@ class PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
           ? Scaffold(
         appBar: AppBar(
           title: Text(widget.pdfTitle, overflow: TextOverflow.ellipsis),
-          backgroundColor:
-          widget.theme?.appBarBackgroundColor ?? cs.primaryContainer,
-          foregroundColor: widget.theme?.appBarForegroundColor ??
-              cs.onPrimaryContainer,
+          backgroundColor: widget.theme?.appBarBackgroundColor ?? cs.surface,
+          foregroundColor:
+          widget.theme?.appBarForegroundColor ?? cs.onSurface,
+          elevation: AppElevation.none,
+          surfaceTintColor: cs.surfaceTint,
+          shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.only(
+              bottomLeft: Radius.circular(AppRadius.lg),
+              bottomRight: Radius.circular(AppRadius.lg),
+            ),
+          ),
         ),
         body: errorBody,
       )
@@ -564,8 +623,9 @@ class PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
   /// method or anything it calls above `_PdfViewerCore`** — see class doc.
   /// `overlayStack` (which contains `_PdfViewerCore` / `SfPdfViewer`) is
   /// built exactly once here and handed down as a `child` to the
-  /// `_readingSettings` `ListenableBuilder` below, so neither an
-  /// appearance change nor a reading-settings change ever reconstructs it.
+  /// scaffold-selector `ListenableBuilder` below, so neither an
+  /// appearance change, a reading-settings change, nor an immersive
+  /// visibility change ever reconstructs it.
   ///
   /// ### Production-pass fix — FAB must exist in host mode too
   ///
@@ -634,14 +694,21 @@ class PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
       );
     }
 
-    // Isolated ListenableBuilder: rebuilds ONLY the thin Scaffold-shape
-    // decision on a reading-settings change. `overlayStack` (and
-    // therefore SfPdfViewer) is passed through as `child` — this builder
-    // callback never calls Theme.of(context), so it does not become an
-    // AnimatedTheme dependent and does not get swept into any
-    // appearance-transition rebuild storm either.
+    // ### Runtime hardening pass — see class doc.
+    //
+    // Listens to BOTH `_readingSettings` (decides *which shape* of
+    // scaffold to build) AND `_immersiveVisibility` (decides whether
+    // chrome is visible *right now*) in a single merged listenable. This
+    // guarantees the scaffold-selection rebuild can never run against a
+    // stale visibility snapshot, regardless of the order the two
+    // controllers' `notifyListeners()` calls happen to fire in.
+    //
+    // `overlayStack` (and therefore SfPdfViewer) is still passed through
+    // as `child` — this builder callback never calls Theme.of(context),
+    // so it does not become an AnimatedTheme dependent and does not get
+    // swept into any appearance-transition rebuild storm either.
     return ListenableBuilder(
-      listenable: _readingSettings,
+      listenable: Listenable.merge([_readingSettings, _immersiveVisibility]),
       builder: (context, child) => _readingSettings.value.immersiveModeEnabled
           ? _buildImmersiveScaffold(body: child!, fab: fab)
           : _buildClassicScaffold(body: child!, fab: fab),
@@ -767,6 +834,16 @@ class PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
     );
   }
 
+  /// ### Reader-UX redesign pass — Scale + Fade
+  ///
+  /// Previously animated with `AnimatedSlide` (a small downward slide on
+  /// hide). Per the reader-redesign animation spec, the FAB now uses a
+  /// scale-down + fade transition instead — visually distinct from the
+  /// app bar's slide-from-top and the progress pill's slide-from-bottom,
+  /// so each piece of chrome reads as its own element rather than
+  /// everything sliding the same way. Visibility logic itself
+  /// (`_immersiveVisibility.chromeVisible`, `IgnorePointer` gating) is
+  /// unchanged.
   Widget _buildAnimatedFab() {
     return ListenableBuilder(
       listenable: Listenable.merge(
@@ -776,10 +853,10 @@ class PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
         return RepaintBoundary(
           child: IgnorePointer(
             ignoring: !visible,
-            child: AnimatedSlide(
+            child: AnimatedScale(
               duration: AppDurations.medium,
               curve: AppDurations.curve,
-              offset: visible ? Offset.zero : const Offset(0, 0.3),
+              scale: visible ? 1.0 : 0.6,
               child: AnimatedOpacity(
                 duration: AppDurations.medium,
                 curve: AppDurations.curve,
@@ -823,15 +900,33 @@ class PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
   /// is passed as `child`, so `SfPdfViewer` is still never reconstructed
   /// by an appearance change — see the class-level architecture note.
   ///
-  /// ### Production-pass fix — progress overlay now respects Immersive
-  /// Mode chrome visibility
+  /// ### Reader-UX redesign pass — progress overlay positioning + hide fix
   ///
-  /// Previously the bottom progress pill had its own, fully independent
-  /// 2-second idle timer and never consulted `_immersiveVisibility`, so it
-  /// could stay visible (or hidden) out of sync with the rest of the
-  /// immersive chrome. It now also hides whenever Immersive Mode is on
-  /// and the chrome has been tapped hidden — its own idle-based
-  /// auto-hide behaviour for normal (non-immersive) use is unchanged.
+  /// Two bugs were found here on inspection (see class doc for the
+  /// positioning one in detail):
+  ///
+  /// 1. **Positioning.** `ReaderProgressOverlay` previously wrapped
+  ///    itself in a `Positioned`, but this call site put `IgnorePointer`
+  ///    / `AnimatedOpacity` *outside* that `Positioned` before handing it
+  ///    to the `Stack` — which silently drops the `left` / `right` /
+  ///    `bottom` offsets `Positioned` was supposed to apply, since
+  ///    `Positioned` only works as the outermost widget directly under a
+  ///    `Stack`. `ReaderProgressOverlay` is now a plain presentational
+  ///    widget with no `Positioned` of its own, and `Positioned` is now
+  ///    the outermost wrapper *here*, exactly matching the (already
+  ///    correct) pattern the immersive app bar uses in
+  ///    `_buildImmersiveScaffold`.
+  /// 2. **Auto-hide.** The old `ReaderProgressOverlay` ran its own
+  ///    independent ~2s inactivity timer, which meant it could fade
+  ///    itself out even with Immersive Mode off — violating "nothing
+  ///    auto-hides in classic mode". Visibility is now driven only by
+  ///    `hiddenByImmersive` below, the same signal the app bar and FAB
+  ///    use, so in classic mode `hiddenByImmersive` is always `false` and
+  ///    the pill is always shown; in immersive mode it hides/shows in
+  ///    lockstep with the rest of the chrome on every tap.
+  ///
+  /// The pill now also slides in/out from the bottom (in addition to
+  /// fading), mirroring the app bar's slide-from-top treatment.
   Widget _buildOverlayStack(Widget viewerCore) {
     final stack = Stack(
       children: [
@@ -867,35 +962,48 @@ class PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
           },
         ),
         if (widget.showBottomBar)
-          ListenableBuilder(
-            listenable: Listenable.merge([
-              _ctrl.pageNotifier,
-              _ctrl.savingNotifier,
-              _ctrl.notesNotifier,
-              _readingSettings,
-              _immersiveVisibility,
-            ]),
-            builder: (_, __) {
-              final immersiveOn = _readingSettings.value.immersiveModeEnabled;
-              final hiddenByImmersive =
-                  immersiveOn && !_immersiveVisibility.chromeVisible;
-              return IgnorePointer(
-                ignoring: hiddenByImmersive,
-                child: AnimatedOpacity(
-                  duration: AppDurations.medium,
-                  curve: AppDurations.curve,
-                  opacity: hiddenByImmersive ? 0.0 : 1.0,
-                  child: ReaderProgressOverlay(
-                    currentPage: _ctrl.currentPage,
-                    totalPages: _ctrl.totalPages,
-                    progressPct: _ctrl.progressPct,
-                    displayPercent: _ctrl.displayPercent,
-                    isSaving: _ctrl.isSavingProgress,
-                    noteCountOnCurrentPage: _ctrl.noteCountOnCurrentPage,
+          Positioned(
+            left: AppSpacing.lg,
+            right: AppSpacing.lg,
+            bottom: AppSpacing.lg,
+            child: ListenableBuilder(
+              listenable: Listenable.merge([
+                _ctrl.pageNotifier,
+                _ctrl.savingNotifier,
+                _ctrl.notesNotifier,
+                _readingSettings,
+                _immersiveVisibility,
+              ]),
+              builder: (_, __) {
+                final immersiveOn =
+                    _readingSettings.value.immersiveModeEnabled;
+                final hiddenByImmersive =
+                    immersiveOn && !_immersiveVisibility.chromeVisible;
+                return IgnorePointer(
+                  ignoring: hiddenByImmersive,
+                  child: AnimatedSlide(
+                    duration: AppDurations.medium,
+                    curve: AppDurations.curve,
+                    offset: hiddenByImmersive
+                        ? const Offset(0, 0.4)
+                        : Offset.zero,
+                    child: AnimatedOpacity(
+                      duration: AppDurations.medium,
+                      curve: AppDurations.curve,
+                      opacity: hiddenByImmersive ? 0.0 : 1.0,
+                      child: ReaderProgressOverlay(
+                        currentPage: _ctrl.currentPage,
+                        totalPages: _ctrl.totalPages,
+                        progressPct: _ctrl.progressPct,
+                        displayPercent: _ctrl.displayPercent,
+                        isSaving: _ctrl.isSavingProgress,
+                        noteCountOnCurrentPage: _ctrl.noteCountOnCurrentPage,
+                      ),
+                    ),
                   ),
-                ),
-              );
-            },
+                );
+              },
+            ),
           ),
       ],
     );
@@ -1003,7 +1111,33 @@ class _JumpToPageDialogState extends State<_JumpToPageDialog> {
 // ---------------------------------------------------------------------------
 // AppBar with collapsible search + overflow menu
 //
-// ### Priority #3 / #6 audit fix — decluttered toolbar
+// ### Reader-UX redesign pass — modern, compact Material 3 toolbar
+//
+// Previously a stock `AppBar` filled with `cs.primaryContainer`. Redesigned
+// for a calmer, more premium, "true reader" feel (Kindle / Google Drive PDF
+// Viewer / Moon+ Reader / ReadEra style):
+//
+//   * Background now defaults to `cs.surface` (a neutral elevated surface)
+//     instead of a saturated `primaryContainer` fill — still fully
+//     overridable via the existing `PdfViewerTheme` host override, so no
+//     API changes.
+//   * Bottom corners are gently rounded (`AppRadius.lg`) via `AppBar.shape`,
+//     giving the bar a soft, floating "card" feel rather than a hard-edged
+//     rectangle — while `toolbarHeight` is left untouched, so the bar stays
+//     exactly as compact as before.
+//   * Title uses `titleMedium` with a slightly heavier weight and tightened
+//     letter-spacing for cleaner, more deliberate typography, and
+//     `centerTitle: false` for a left-aligned, app-like title instead of a
+//     centered one.
+//   * Every action icon gets a shared, explicit rounded-rectangle touch
+//     target (`AppRadius.md`) via `IconButton.styleFrom` — visually
+//     tightening the row and giving each icon a proper Material 3 "tap
+//     target" shape instead of the default circular ripple only.
+//   * The overflow ("more") menu gets the same rounded-rectangle shape and
+//     a touch more elevation, with dense `ListTile`s for a cleaner list.
+//
+// ### Priority #3 / #6 audit fix — decluttered toolbar (unchanged from
+// before)
 //
 // Previously rendered 7 permanent icons (reading settings, appearance,
 // search, jump-to-page, notes, highlights, bookmarks). That's too many for
@@ -1088,26 +1222,57 @@ class _AppBarWithSearch extends StatelessWidget {
     }
   }
 
+  static const BorderRadius _kBottomRounded = BorderRadius.only(
+    bottomLeft: Radius.circular(AppRadius.lg),
+    bottomRight: Radius.circular(AppRadius.lg),
+  );
+
   @override
   Widget build(BuildContext context) {
     // Live read, resolved fresh every time THIS widget is rebuilt by its
     // own ListenableBuilder — never captured/frozen from an ancestor.
     final cs = Theme.of(context).colorScheme;
-    final backgroundColor =
-        viewerTheme?.appBarBackgroundColor ?? cs.primaryContainer;
+    final tt = Theme.of(context).textTheme;
+    final backgroundColor = viewerTheme?.appBarBackgroundColor ?? cs.surface;
     final foregroundColor =
-        viewerTheme?.appBarForegroundColor ?? cs.onPrimaryContainer;
+        viewerTheme?.appBarForegroundColor ?? cs.onSurface;
+
+    final actionButtonStyle = IconButton.styleFrom(
+      foregroundColor: foregroundColor,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadius.md),
+      ),
+      padding: const EdgeInsets.all(AppSpacing.sm),
+      visualDensity: VisualDensity.compact,
+    );
 
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         AppBar(
-          title: Text(title, overflow: TextOverflow.ellipsis),
+          title: Text(
+            title,
+            overflow: TextOverflow.ellipsis,
+            style: tt.titleMedium?.copyWith(
+              color: foregroundColor,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.1,
+            ),
+          ),
+          centerTitle: false,
+          titleSpacing: AppSpacing.md,
           backgroundColor: backgroundColor,
           foregroundColor: foregroundColor,
+          elevation: AppElevation.none,
+          scrolledUnderElevation: AppElevation.low,
+          surfaceTintColor: cs.surfaceTint,
+          shape: const RoundedRectangleBorder(borderRadius: _kBottomRounded),
+          actionsPadding:
+          const EdgeInsets.symmetric(horizontal: AppSpacing.xs),
           actions: [
             if (enableSearch)
               IconButton(
+                style: actionButtonStyle,
                 icon: Icon(searchVisible
                     ? Icons.search_off_rounded
                     : Icons.search_rounded),
@@ -1115,35 +1280,45 @@ class _AppBarWithSearch extends StatelessWidget {
                 onPressed: onToggleSearch,
               ),
             IconButton(
+              style: actionButtonStyle,
               icon: Badge(
                 isLabelVisible: noteCount > 0,
                 label: Text('$noteCount'),
+                backgroundColor: cs.primary,
                 child: const Icon(Icons.sticky_note_2_outlined),
               ),
               tooltip: 'View notes',
               onPressed: onNotes,
             ),
             IconButton(
+              style: actionButtonStyle,
               icon: Badge(
                 isLabelVisible: highlightCount > 0,
                 label: Text('$highlightCount'),
+                backgroundColor: cs.primary,
                 child: const Icon(Icons.format_color_text_rounded),
               ),
               tooltip: 'View annotations',
               onPressed: onHighlights,
             ),
             IconButton(
+              style: actionButtonStyle,
               icon: Badge(
                 isLabelVisible: bookmarkCount > 0,
                 label: Text('$bookmarkCount'),
+                backgroundColor: cs.primary,
                 child: const Icon(Icons.bookmarks_outlined),
               ),
               tooltip: 'View bookmarks',
               onPressed: onBookmarks,
             ),
             PopupMenuButton<_OverflowAction>(
-              icon: const Icon(Icons.more_vert_rounded),
+              icon: Icon(Icons.more_vert_rounded, color: foregroundColor),
               tooltip: 'More',
+              elevation: AppElevation.medium,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(AppRadius.md),
+              ),
               onSelected: (action) {
                 switch (action) {
                   case _OverflowAction.jumpToPage:
@@ -1158,6 +1333,7 @@ class _AppBarWithSearch extends StatelessWidget {
                 const PopupMenuItem(
                   value: _OverflowAction.jumpToPage,
                   child: ListTile(
+                    dense: true,
                     contentPadding: EdgeInsets.zero,
                     leading: Icon(Icons.redo_rounded),
                     title: Text('Jump to page'),
@@ -1167,6 +1343,7 @@ class _AppBarWithSearch extends StatelessWidget {
                   PopupMenuItem(
                     value: _OverflowAction.appearance,
                     child: ListTile(
+                      dense: true,
                       contentPadding: EdgeInsets.zero,
                       leading: Icon(_appearanceIcon),
                       title: const Text('Appearance'),
@@ -1176,6 +1353,7 @@ class _AppBarWithSearch extends StatelessWidget {
                   const PopupMenuItem(
                     value: _OverflowAction.readingSettings,
                     child: ListTile(
+                      dense: true,
                       contentPadding: EdgeInsets.zero,
                       leading: Icon(Icons.tune_rounded),
                       title: Text('Reading settings'),
@@ -1183,6 +1361,7 @@ class _AppBarWithSearch extends StatelessWidget {
                   ),
               ],
             ),
+            const SizedBox(width: AppSpacing.xs),
           ],
         ),
         AnimatedSize(

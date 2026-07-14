@@ -79,15 +79,43 @@ class DndManager(private val context: Context) {
     }
 
     /**
-     * Turns Do Not Disturb off. Same safe-no-op behavior as [enableDnd]
-     * when permission isn't granted.
+     * Turns Do Not Disturb off.
+     *
+     * **Final Reader-integration pass:** now accepts an optional
+     * [restoreFilter] — the exact [NotificationManager] interruption
+     * filter constant that was in effect before Dart's
+     * `ReadingSettingsController` called [enableDnd]. When it names a
+     * genuine, settable filter value ([NotificationManager.INTERRUPTION_FILTER_ALL],
+     * `_PRIORITY`, `_ALARMS`, or `_NONE`), that exact value is restored —
+     * this is what "restore exactly what existed before enabling DND"
+     * means in practice, rather than always forcing
+     * [NotificationManager.INTERRUPTION_FILTER_ALL].
+     *
+     * [restoreFilter] is optional and defaults to `null` so this remains
+     * fully backward compatible with any existing caller that invokes
+     * `disableDnd` with no arguments — that path still falls back to
+     * [NotificationManager.INTERRUPTION_FILTER_ALL], exactly as before.
+     * The MethodChannel method name is unchanged; this is purely an
+     * additional, optional argument.
      */
-    fun disableDnd() {
+    fun disableDnd(restoreFilter: Int? = null) {
         if (!isPermissionGranted()) return
+        val target = when (restoreFilter) {
+            NotificationManager.INTERRUPTION_FILTER_ALL,
+            NotificationManager.INTERRUPTION_FILTER_PRIORITY,
+            NotificationManager.INTERRUPTION_FILTER_ALARMS,
+            NotificationManager.INTERRUPTION_FILTER_NONE -> restoreFilter
+            // Unknown / not provided (including INTERRUPTION_FILTER_UNKNOWN,
+            // which isn't a settable target) — fall back to the same safe
+            // default this method always used.
+            else -> NotificationManager.INTERRUPTION_FILTER_ALL
+        }
         try {
-            notificationManager.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_ALL)
+            notificationManager.setInterruptionFilter(target)
         } catch (_: SecurityException) {
-            // See enableDnd().
+            // Permission was revoked between the check above and this
+            // call (or while the reader was open). Fail safely rather
+            // than crashing the host app.
         }
     }
 

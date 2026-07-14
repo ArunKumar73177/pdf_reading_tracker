@@ -44,20 +44,18 @@ class DndCapability {
 
 /// Platform-agnostic Do Not Disturb control surface.
 ///
-/// **Phase 3 note:** [DndServiceProvider.create] now returns
-/// [AndroidDndService] on Android — backed by the `pdf_reading_tracker`
-/// `MethodChannel` and the native `DndManager` — and
-/// [UnsupportedDndService] (see `dnd_service_unsupported.dart`) on every
-/// other platform, unchanged from Phase 3A. No call site outside this
-/// file needed to change: [ReadingSettingsController], the Reading
-/// Settings sheet, and [PdfReadingTrackerViewer] all depend only on this
-/// abstract [DndService] interface and [DndCapability], never on a
-/// concrete implementation.
+/// **Final Reader-integration pass:**
+/// - [disable] now takes an optional [restoreFilter] so the caller
+///   (`ReadingSettingsController`) can restore the *exact* interruption
+///   filter that was in effect before DND was enabled, instead of
+///   blindly resetting to "all interruptions allowed". Omitting it keeps
+///   the old behavior (native side falls back to
+///   `INTERRUPTION_FILTER_ALL`) — no existing caller breaks.
+/// - [getCurrentInterruptionFilter] lets a caller capture that
+///   "before" state right before calling [enable].
 ///
-/// **Explicitly out of scope for this phase:** nothing in this file
-/// calls [DndService.enable] / [DndService.disable] on its own — no
-/// auto-enable/disable on reader lifecycle events, no wiring into
-/// Reading Settings. That is Phase 4 (Reader integration).
+/// Everything else — including the [enable]/[requestAccess] contract —
+/// is unchanged from Phase 3A/3B.
 abstract class DndService {
   DndCapability get capability;
 
@@ -72,23 +70,31 @@ abstract class DndService {
   /// to read current status — e.g. a future Reader re-checking on
   /// `AppLifecycleState.resumed`, without risking an unwanted repeat
   /// Settings navigation — should use [checkPermission] instead.
+  ///
+  /// This is the ONLY method in the entire `DndService` surface that may
+  /// prompt the user for permission. `ReadingSettingsController` is the
+  /// only call site that invokes it, and only from the explicit
+  /// "user flipped the DND switch on" action.
   Future<bool> requestAccess();
 
   /// Reads current permission status with no navigation side effect.
-  ///
-  /// Added as a default (non-abstract) method so existing [DndService]
-  /// implementations are unaffected — this is purely additive and does
-  /// not change [requestAccess]'s existing contract or behavior.
-  ///
-  /// The base implementation returns `false`, matching
-  /// [UnsupportedDndService]'s existing behavior with no override
-  /// required. [AndroidDndService] overrides this with a real native
-  /// permission check.
   Future<bool> checkPermission() async => false;
+
+  /// Reads the interruption filter currently in effect, or `null` if it
+  /// couldn't be determined (unsupported platform, channel failure,
+  /// etc). Read-only — never requires Notification Policy Access.
+  Future<int?> getCurrentInterruptionFilter();
 
   Future<void> enable();
 
-  Future<void> disable();
+  /// Turns Do Not Disturb off.
+  ///
+  /// [restoreFilter] — if provided — is the exact interruption-filter
+  /// value to restore (typically whatever [getCurrentInterruptionFilter]
+  /// returned right before [enable] was called). If omitted or `null`,
+  /// implementations fall back to a safe default rather than restoring
+  /// nothing.
+  Future<void> disable({int? restoreFilter});
 
   void dispose();
 }
@@ -100,7 +106,7 @@ abstract class DndService {
 /// failure — a stale/detached channel, a missing native implementation on
 /// an unexpected OEM build, etc.) degrades gracefully instead of
 /// propagating into the reader: methods that return a value fall back to
-/// a safe default (`false`), and fire-and-forget methods ([enable],
+/// a safe default (`false`/`null`), and fire-and-forget methods ([enable],
 /// [disable]) simply become no-ops.
 ///
 /// [capability] does not need a native round-trip to compute: the
@@ -127,13 +133,6 @@ class AndroidDndService implements DndService {
   /// Pure status read — no navigation, no side effects. Never throws: any
   /// failure (including [PlatformException]) is treated as "not granted"
   /// rather than crashing the caller.
-  ///
-  /// This is the method a future Reader integration should poll (e.g. on
-  /// `AppLifecycleState.resumed`, after the user returns from the
-  /// settings screen [requestAccess] opened) instead of calling
-  /// [requestAccess] again, which would be semantically odd for a plain
-  /// status check even though today it happens not to reopen Settings
-  /// when already granted.
   @override
   Future<bool> checkPermission() async {
     try {
@@ -167,6 +166,22 @@ class AndroidDndService implements DndService {
     }
   }
 
+  /// Reads the live interruption filter via the native
+  /// `getCurrentInterruptionFilter` method. This is a read — it never
+  /// requires Notification Policy Access — so failures here are treated
+  /// purely as "couldn't determine it" (`null`), never surfaced to the
+  /// reader as an error.
+  @override
+  Future<int?> getCurrentInterruptionFilter() async {
+    try {
+      return await _channel.invokeMethod<int>('getCurrentInterruptionFilter');
+    } on PlatformException {
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   @override
   Future<void> enable() async {
     try {
@@ -180,10 +195,18 @@ class AndroidDndService implements DndService {
     }
   }
 
+  /// [restoreFilter], when provided, is forwarded to the native side as
+  /// `{"filter": restoreFilter}` so it can restore that exact
+  /// interruption filter instead of assuming `INTERRUPTION_FILTER_ALL`.
+  /// The native method name (`disableDnd`) is unchanged — only an
+  /// additional, optional argument is now sent.
   @override
-  Future<void> disable() async {
+  Future<void> disable({int? restoreFilter}) async {
     try {
-      await _channel.invokeMethod<void>('disableDnd');
+      await _channel.invokeMethod<void>(
+        'disableDnd',
+        restoreFilter != null ? <String, dynamic>{'filter': restoreFilter} : null,
+      );
     } on PlatformException {
       // See enable().
     } catch (_) {

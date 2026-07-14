@@ -197,6 +197,17 @@ enum _HostOverflowAction { jumpToPage, appearance, readingSettings }
 /// appears, and the overflow button itself is omitted entirely if none of
 /// the three are enabled.
 ///
+/// ### Reader-UX redesign pass — icon spacing / touch targets
+///
+/// Icons are now separated with a small explicit gap (rather than relying
+/// solely on `IconButton`'s own internal padding) and each gets a
+/// rounded-rectangle Material 3 tap target via `IconButton.styleFrom`,
+/// matching the plugin's own `_AppBarWithSearch` treatment — so a host
+/// toolbar built from these widgets looks like the same "premium reader"
+/// family as the plugin's built-in chrome, not a visually distinct row of
+/// default Material icons. No callback, ordering, or `show*` flag
+/// semantics changed.
+///
 /// Host apps that prefer a fully custom arrangement can still compose
 /// [BookmarkButton], [NotesButton], [HighlightsButton], [SearchButton],
 /// [JumpToPageButton], [AppearanceButton], and [ReadingSettingsButton]
@@ -225,65 +236,203 @@ class PdfReaderToolbar extends StatelessWidget {
   final bool showAppearance;
   final bool showReadingSettings;
 
+  static const double _kIconGap = 2.0;
+  static const double _kTouchTargetRadius = 10.0;
+
   @override
   Widget build(BuildContext context) {
     final hasOverflowItems =
         showJumpToPage || showAppearance || showReadingSettings;
 
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        if (showSearch) SearchButton(actions: actions, color: color),
-        if (showNotes) NotesButton(actions: actions, color: color),
-        if (showHighlights) HighlightsButton(actions: actions, color: color),
-        if (showBookmarks) BookmarkButton(actions: actions, color: color),
-        if (hasOverflowItems)
-          PopupMenuButton<_HostOverflowAction>(
-            icon: Icon(Icons.more_vert_rounded, color: color),
-            tooltip: 'More',
-            onSelected: (action) {
-              switch (action) {
-                case _HostOverflowAction.jumpToPage:
-                  actions.jumpToPage();
-                case _HostOverflowAction.appearance:
-                  actions.showAppearanceSelector();
-                case _HostOverflowAction.readingSettings:
-                  actions.showReadingSettings();
-              }
-            },
-            itemBuilder: (context) => [
-              if (showJumpToPage)
-                const PopupMenuItem(
-                  value: _HostOverflowAction.jumpToPage,
-                  child: ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: Icon(Icons.redo_rounded),
-                    title: Text('Jump to page'),
+    final iconStyle = IconButton.styleFrom(
+      foregroundColor: color,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(_kTouchTargetRadius),
+      ),
+      visualDensity: VisualDensity.compact,
+    );
+
+    return IconButtonTheme(
+      data: IconButtonThemeData(style: iconStyle),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (showSearch) SearchButton(actions: actions, color: color),
+          if (showSearch) const SizedBox(width: _kIconGap),
+          if (showNotes) NotesButton(actions: actions, color: color),
+          if (showNotes) const SizedBox(width: _kIconGap),
+          if (showHighlights)
+            HighlightsButton(actions: actions, color: color),
+          if (showHighlights) const SizedBox(width: _kIconGap),
+          if (showBookmarks) BookmarkButton(actions: actions, color: color),
+          if (hasOverflowItems)
+            PopupMenuButton<_HostOverflowAction>(
+              icon: Icon(Icons.more_vert_rounded, color: color),
+              tooltip: 'More',
+              elevation: 3,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(_kTouchTargetRadius),
+              ),
+              onSelected: (action) {
+                switch (action) {
+                  case _HostOverflowAction.jumpToPage:
+                    actions.jumpToPage();
+                  case _HostOverflowAction.appearance:
+                    actions.showAppearanceSelector();
+                  case _HostOverflowAction.readingSettings:
+                    actions.showReadingSettings();
+                }
+              },
+              itemBuilder: (context) => [
+                if (showJumpToPage)
+                  const PopupMenuItem(
+                    value: _HostOverflowAction.jumpToPage,
+                    child: ListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.redo_rounded),
+                      title: Text('Jump to page'),
+                    ),
                   ),
-                ),
-              if (showAppearance)
-                PopupMenuItem(
-                  value: _HostOverflowAction.appearance,
-                  child: ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: Icon(AppearanceButton.iconFor(
-                      actions.appearanceMode,
-                    )),
-                    title: const Text('Appearance'),
+                if (showAppearance)
+                  PopupMenuItem(
+                    value: _HostOverflowAction.appearance,
+                    child: ListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(AppearanceButton.iconFor(
+                        actions.appearanceMode,
+                      )),
+                      title: const Text('Appearance'),
+                    ),
                   ),
-                ),
-              if (showReadingSettings)
-                const PopupMenuItem(
-                  value: _HostOverflowAction.readingSettings,
-                  child: ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: Icon(Icons.tune_rounded),
-                    title: Text('Reading settings'),
+                if (showReadingSettings)
+                  const PopupMenuItem(
+                    value: _HostOverflowAction.readingSettings,
+                    child: ListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.tune_rounded),
+                      title: Text('Reading settings'),
+                    ),
                   ),
-                ),
-            ],
+              ],
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// ImmersiveChromeVisibility
+// ---------------------------------------------------------------------------
+
+/// Wraps a host app's own chrome — its own `AppBar`, a custom toolbar row,
+/// or any other widget — so it automatically hides and shows in lockstep
+/// with the plugin's Immersive Mode.
+///
+/// ### Why this exists
+///
+/// [PdfReadingTrackerViewer] (via `showAppBar: true`) already hides its
+/// *own* built-in app bar, bottom progress pill, and FAB together under
+/// Immersive Mode, all driven by a single `ImmersiveVisibilityController`
+/// — see that controller's class doc for the single-source-of-truth
+/// design. A host app that renders its **own** app bar (`showAppBar:
+/// false`, composing [PdfReaderToolbar] / [BookmarkButton] / etc. into
+/// its own `Scaffold.appBar`) sits *outside* the plugin's widget tree, so
+/// nothing hides it automatically — the host previously had to manually
+/// listen to [PdfReaderActions.listenable] and read
+/// [PdfReaderActions.immersiveChromeVisible] itself to replicate the
+/// hide/show/animate behaviour.
+///
+/// This widget does exactly that wiring once, correctly, so host apps
+/// don't have to re-implement it: wrap your own app bar in
+/// [ImmersiveChromeVisibility] and it slides + fades out whenever the
+/// plugin's chrome hides, and stays fully visible and interactive
+/// whenever Immersive Mode is off — reading the *exact same*
+/// `ImmersiveVisibilityController` state the plugin's built-in chrome
+/// uses. No second controller, no independent timer: this widget owns no
+/// state of its own beyond the `AnimatedSlide`/`AnimatedOpacity`
+/// transition itself.
+///
+/// ### Usage
+///
+/// ```dart
+/// final readerKey = GlobalKey<PdfReadingTrackerViewerState>();
+///
+/// Scaffold(
+///   appBar: PreferredSize(
+///     preferredSize: const Size.fromHeight(kToolbarHeight),
+///     child: ImmersiveChromeVisibility(
+///       actions: readerKey.currentState!.readerActions,
+///       child: AppBar(
+///         title: const Text('My PDF'),
+///         actions: [
+///           PdfReaderToolbar(actions: readerKey.currentState!.readerActions),
+///         ],
+///       ),
+///     ),
+///   ),
+///   body: PdfReadingTrackerViewer(
+///     key: readerKey,
+///     showAppBar: false,
+///     pdfId: 'my-pdf',
+///     pdfTitle: 'My PDF',
+///     filePath: '/path/to/file.pdf',
+///   ),
+/// )
+/// ```
+class ImmersiveChromeVisibility extends StatelessWidget {
+  const ImmersiveChromeVisibility({
+    super.key,
+    required this.actions,
+    required this.child,
+    this.slideOffset = const Offset(0, -1),
+  });
+
+  /// The same [PdfReaderActions] instance obtained from
+  /// `PdfReadingTrackerViewerState.readerActions`.
+  final PdfReaderActions actions;
+
+  /// The host app's own chrome — typically an `AppBar` or a `Row` of
+  /// [PdfReaderToolbar] buttons.
+  final Widget child;
+
+  /// Direction [child] slides toward while hiding, as a fraction of its
+  /// own size (same semantics as [AnimatedSlide.offset]). Defaults to
+  /// sliding straight up and off-screen, matching the plugin's own app
+  /// bar in `_buildImmersiveScaffold`.
+  final Offset slideOffset;
+
+  static const Duration _kDuration = Duration(milliseconds: 220);
+  static const Curve _kCurve = Curves.easeOutCubic;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: actions.listenable,
+      builder: (context, _) {
+        // When Immersive Mode is off, `immersiveChromeVisible` is always
+        // `true` (see `ImmersiveVisibilityController`), so this widget is
+        // a permanent no-op passthrough in classic mode — exactly the
+        // "everything stays visible" requirement, with zero extra state.
+        final visible = actions.immersiveChromeVisible;
+        return IgnorePointer(
+          ignoring: !visible,
+          child: AnimatedSlide(
+            duration: _kDuration,
+            curve: _kCurve,
+            offset: visible ? Offset.zero : slideOffset,
+            child: AnimatedOpacity(
+              duration: _kDuration,
+              curve: _kCurve,
+              opacity: visible ? 1.0 : 0.0,
+              child: child,
+            ),
           ),
-      ],
+        );
+      },
     );
   }
 }

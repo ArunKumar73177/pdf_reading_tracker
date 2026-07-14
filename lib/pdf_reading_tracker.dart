@@ -54,7 +54,8 @@ export 'src/viewer/widgets/pdf_reader_toolbar.dart'
     SearchButton,
     JumpToPageButton,
     AppearanceButton,
-    ReadingSettingsButton;
+    ReadingSettingsButton,
+    ImmersiveChromeVisibility;
 export 'src/theme/appearance_mode.dart' show AppearanceMode;
 
 // ── Internal imports for the static facade ───────────────────────────────────
@@ -90,6 +91,14 @@ import 'src/services/progress_service.dart';
 /// [AppearanceButton] / [ReadingSettingsButton] widgets to drive the exact
 /// same reader actions the plugin's own built-in app bar uses — no
 /// duplicated logic.
+///
+/// **v4.1.1 — Immersive Mode chrome sync for host toolbars**
+/// [ImmersiveChromeVisibility] wraps a host app's own app bar / toolbar so
+/// it automatically hides and shows together with the plugin's built-in
+/// chrome under Immersive Mode, reading the same
+/// `ImmersiveVisibilityController` state via [PdfReaderActions] — no
+/// manual listening, no second controller, no new timer required on the
+/// host side.
 ///
 /// For the all-in-one reader widget, use [PdfReadingTrackerViewer].
 abstract final class PdfReadingTracker {
