@@ -211,8 +211,7 @@ class ReadingSettingsController extends ChangeNotifier
         // Capture whatever filter is in effect right now, BEFORE
         // overriding it, so it can be restored exactly later — never a
         // hardcoded "restore to allow everything".
-        _previousInterruptionFilter =
-        await dnd.getCurrentInterruptionFilter();
+        _previousInterruptionFilter = await dnd.getCurrentInterruptionFilter();
         await dnd.enable();
         _dndActive = true;
       } catch (_) {

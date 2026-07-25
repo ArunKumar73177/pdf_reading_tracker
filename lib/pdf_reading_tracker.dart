@@ -18,13 +18,13 @@ export 'src/services/pdf_picker_service.dart'
 // ── PDF Operations ────────────────────────────────────────────────────────────
 export 'src/services/pdf_operations/pdf_operation_exception.dart'
     show
-    PdfOperationException,
-    PdfMergeException,
-    PdfMergeFileNotFoundException,
-    PdfMergeCorruptFileException,
-    PdfSplitException,
-    PdfSplitFileNotFoundException,
-    PdfSplitInvalidRangeException;
+        PdfOperationException,
+        PdfMergeException,
+        PdfMergeFileNotFoundException,
+        PdfMergeCorruptFileException,
+        PdfSplitException,
+        PdfSplitFileNotFoundException,
+        PdfSplitInvalidRangeException;
 
 export 'src/services/pdf_operations/pdf_merge_service.dart'
     show PdfMergeService;
@@ -47,15 +47,15 @@ export 'src/viewer/pdf_reading_tracker_viewer.dart'
 export 'src/viewer/pdf_reader_actions.dart' show PdfReaderActions;
 export 'src/viewer/widgets/pdf_reader_toolbar.dart'
     show
-    PdfReaderToolbar,
-    BookmarkButton,
-    NotesButton,
-    HighlightsButton,
-    SearchButton,
-    JumpToPageButton,
-    AppearanceButton,
-    ReadingSettingsButton,
-    ImmersiveChromeVisibility;
+        PdfReaderToolbar,
+        BookmarkButton,
+        NotesButton,
+        HighlightsButton,
+        SearchButton,
+        JumpToPageButton,
+        AppearanceButton,
+        ReadingSettingsButton,
+        ImmersiveChromeVisibility;
 export 'src/theme/appearance_mode.dart' show AppearanceMode;
 
 // ── Internal imports for the static facade ───────────────────────────────────
@@ -152,17 +152,17 @@ abstract final class PdfReadingTracker {
   /// `Note.create(...)` object together with the live selection data
   /// separately.  Pass empty values when creating notes programmatically.
   static Future<int> addNote(
-      Note note, {
-        String selectedText = '',
-        List<NoteRect> rectList = const [],
-      }) {
+    Note note, {
+    String selectedText = '',
+    List<NoteRect> rectList = const [],
+  }) {
     // Merge caller-supplied anchor data so it is never silently dropped.
     final anchored = (selectedText.isNotEmpty || rectList.isNotEmpty)
         ? note.copyWith(
-      selectedText:
-      selectedText.isNotEmpty ? selectedText : note.selectedText,
-      rectList: rectList.isNotEmpty ? rectList : note.rectList,
-    )
+            selectedText:
+                selectedText.isNotEmpty ? selectedText : note.selectedText,
+            rectList: rectList.isNotEmpty ? rectList : note.rectList,
+          )
         : note;
     return NoteService.instance.addNote(anchored);
   }

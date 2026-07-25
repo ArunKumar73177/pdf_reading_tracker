@@ -28,6 +28,7 @@ import 'pdf_reading_tracker_viewer.dart';
 class PdfReaderActions {
   const PdfReaderActions(this._state);
   final PdfReadingTrackerViewerState _state;
+
   /// Notifies on any change relevant to a custom toolbar, including
   /// immersive chrome visibility.
   Listenable get listenable => _state.readerListenable;
@@ -39,8 +40,10 @@ class PdfReaderActions {
   AppearanceMode get appearanceMode => _state.appearanceMode;
   int get currentPage => _state.currentPage;
   int get totalPages => _state.totalPages;
+
   /// Whether Immersive Mode is currently enabled in Reading Settings.
   bool get immersiveModeEnabled => _state.immersiveModeEnabled;
+
   /// Whether the reader chrome is currently visible under Immersive Mode.
   /// Always `true` when Immersive Mode is off.
   bool get immersiveChromeVisible => _state.immersiveChromeVisible;

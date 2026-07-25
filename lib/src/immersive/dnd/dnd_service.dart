@@ -36,7 +36,7 @@ class DndCapability {
   /// meaningfully do something.
   bool get isUsable =>
       level == DndSupportLevel.fullSupport ||
-          level == DndSupportLevel.partialSupport;
+      level == DndSupportLevel.partialSupport;
 
   @override
   String toString() => 'DndCapability(level: $level, reason: $reason)';
@@ -122,11 +122,11 @@ class AndroidDndService implements DndService {
 
   @override
   DndCapability get capability => const DndCapability(
-    level: DndSupportLevel.fullSupport,
-    reason: 'Do Not Disturb is available on this device. Granting '
-        'Notification Policy Access lets the reader silence '
-        'notifications while Immersive Mode is on.',
-  );
+        level: DndSupportLevel.fullSupport,
+        reason: 'Do Not Disturb is available on this device. Granting '
+            'Notification Policy Access lets the reader silence '
+            'notifications while Immersive Mode is on.',
+      );
 
   /// Whether Notification Policy Access is currently granted.
   ///
@@ -136,8 +136,7 @@ class AndroidDndService implements DndService {
   @override
   Future<bool> checkPermission() async {
     try {
-      final granted =
-      await _channel.invokeMethod<bool>('isPermissionGranted');
+      final granted = await _channel.invokeMethod<bool>('isPermissionGranted');
       return granted ?? false;
     } on PlatformException {
       return false;
@@ -205,7 +204,9 @@ class AndroidDndService implements DndService {
     try {
       await _channel.invokeMethod<void>(
         'disableDnd',
-        restoreFilter != null ? <String, dynamic>{'filter': restoreFilter} : null,
+        restoreFilter != null
+            ? <String, dynamic>{'filter': restoreFilter}
+            : null,
       );
     } on PlatformException {
       // See enable().

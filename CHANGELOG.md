@@ -6,6 +6,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## 5.0.0
+
+This release consolidates a series of internal stability, architecture, and reliability passes made since 4.1.0. The public API is unchanged from 4.1.0 — this is a production-hardening release, not a rewrite of the surface developers integrate against.
+
+### Added
+- `ImmersiveChromeVisibility` widget for host apps (`showAppBar: false`) to keep their own app bar or toolbar hidden/shown in lockstep with the plugin's immersive chrome, without manually listening to internal state.
+
+### Changed
+- Reader app bar redesigned around a calmer, Material 3 style: neutral surface background instead of a saturated fill, softly rounded bottom corners, refined title typography, and explicit rounded touch targets for every action icon.
+- Reader toolbar decluttered: Search, Notes, Highlights, and Bookmarks remain always visible; Jump to Page, Appearance, and Reading Settings moved into a single overflow menu. No functionality was removed — every action remains one or two taps away, using the same callbacks and public API as before.
+- The floating action buttons (bookmark/add note) now animate with a scale-and-fade transition instead of a directional slide, to visually distinguish them from the app bar's slide-from-top and the progress overlay's slide-from-bottom.
+
+### Improved
+- Scaffold selection (immersive vs. classic layout) and immersive chrome-visibility now share a single merged `Listenable`, eliminating a narrow window where the two could be evaluated against slightly stale state relative to each other.
+- Appearance changes now reach the background painted behind the PDF surface (including the spacing gaps between pages) without ever reconstructing the `SfPdfViewer` widget itself.
+- `showAppBar: false` integrations now also receive the bookmark/add-note floating action buttons, manually positioned in the conventional bottom-right location, matching behavior previously available only with the built-in app bar.
+- Resolved a `BuildContext` lifecycle issue (`use_build_context_synchronously`) in the bookmark and add-note dialog flows by guarding post-`await` context usage on the specific `BuildContext` instance involved, rather than only the widget's own `mounted` flag.
+
+### Fixed
+- Progress overlay (bottom pill) no longer silently loses its bottom-pinned position due to `Positioned` being nested behind other widgets instead of sitting directly under its parent `Stack`.
+- Progress overlay no longer runs its own independent auto-hide timer; visibility is now driven by the same immersive-chrome signal used by the app bar and FAB, so it no longer fades out unexpectedly with Immersive Mode off.
+- Appearance selector menu no longer opens outside the reader's local theme scope, which previously caused it to render with the host app's ambient colors instead of the reader's own resolved appearance.
+- Resolved compile-time regressions from an internal refactor (a non-existent state getter reference and two phantom public exports).
+
+---
+
 ## 4.1.0
 
 ### Added
@@ -28,7 +54,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Improved
 - Better integration with applications using custom app bars.
 - Better API documentation across the host-integration surface.
-- Better host application integration overall.
 
 ### Internal
 - Code cleanup.
@@ -44,17 +69,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Changed
 - Simplified package metadata and improved pub.dev discoverability.
 - Refined README with clearer setup instructions, feature descriptions, and API documentation.
-- Improved package documentation for better developer experience.
 
 ### Fixed
 - Resolved all dartdoc unresolved documentation references.
 - Improved lower-bound package compatibility for pub.dev analysis.
 - Cleaned up analyzer and documentation issues.
-- Minor code quality and maintainability improvements.
 
 ### Internal
 - Updated package metadata and release documentation.
-- General maintenance and project cleanup.
 
 ---
 
@@ -88,113 +110,50 @@ Continued evolution of the package's appearance system, page-detection engine, a
 ### Breaking Changes
 - None. Existing integrations using `PdfReadingTrackerViewer` and the static `PdfReadingTracker` API continue to work without modification.
 
-### Known Limitations
-- Dominant page detection continues to rely on a combination of page-change events and geometry heuristics; further refinement is ongoing.
-- Native swipe-threshold page snapping is not yet available.
-
 ---
 
 ## 3.0.0
 
-This release introduces a complete migration to Syncfusion PDF Viewer and significantly expands the package from a reading-progress tracker into a full-featured PDF reader and annotation solution.
+Complete migration to Syncfusion PDF Viewer, expanding the package from a reading-progress tracker into a full-featured PDF reader and annotation solution.
 
 ### Major Architecture Changes
 - Replaced ALH PDF View with Syncfusion PDF Viewer.
 - Reworked PDF rendering architecture.
-- Improved rendering reliability and maintainability.
 - Simplified dependency management by removing JitPack requirements.
-- Improved overall package structure for long-term scalability.
 
 ### Added
 
 **PDF Reading**
-- Reading progress tracking.
-- Continue Reading.
-- Recent PDFs dashboard.
-- Jump-to-page navigation.
-- Multi-PDF support.
-- Persistent reading position.
+- Reading progress tracking, Continue Reading, Recent PDFs, jump-to-page, multi-PDF support, persistent reading position.
 
 **User PDF Management**
-- Import PDFs from device storage.
-- Persistent PDF library.
-- Stable PDF ID generation.
-- Automatic PDF restoration after app restart.
+- Import PDFs from device storage, persistent PDF library, stable PDF ID generation, automatic restoration after app restart.
 
 **Search**
-- Built-in PDF text search.
-- Search navigation.
-- Search result highlighting.
+- Built-in PDF text search, search navigation, result highlighting.
 
 **Bookmarks**
-- Bookmark creation.
-- Bookmark removal.
-- Bookmark notes.
-- Persistent bookmark storage.
+- Bookmark creation, removal, notes, persistent storage.
 
 **Annotations**
-- Highlight annotations.
-- Underline annotations.
-- Strikethrough annotations.
-- Squiggly annotations.
-- Annotation persistence.
-- Annotation restoration.
+- Highlight, underline, strikethrough, and squiggly annotations, with persistence and restoration.
 
 **Notes**
-- Text-linked notes.
-- Edit notes.
-- Delete notes.
-- Jump to note.
-- Persistent note storage.
+- Text-linked notes, edit, delete, jump to note, persistent storage.
 
 **PDF Operations**
-- PDF merge.
-- PDF split.
-- Typed exception handling.
-
-### Improved
-- Improved reading progress tracking.
-- Improved Continue Reading experience.
-- Improved Recent PDFs workflow.
-- Improved PDF loading performance.
-- Improved bookmark management.
-- Improved annotation restoration.
-- Improved database structure.
-- Improved storage efficiency.
-- Improved offline persistence.
-- Improved user PDF workflow.
+- PDF merge, PDF split, typed exception handling.
 
 ### Fixed
-- Fixed File Not Found issues caused by temporary file picker paths.
-- Fixed reading progress persistence issues.
-- Fixed bookmark restoration issues.
-- Fixed PDF reopening issues.
-- Fixed annotation restoration race conditions.
-- Fixed dialog lifecycle issues.
-- Fixed `TextEditingController` disposal issues.
-- Fixed duplicate PDF cache storage.
-- Fixed multiple persistence edge cases.
+- File Not Found issues caused by temporary file picker paths.
+- Reading progress persistence issues.
+- Bookmark and annotation restoration issues.
+- Dialog and `TextEditingController` lifecycle issues.
+- Duplicate PDF cache storage.
 
 ### Storage Optimizations
 - Automatic cleanup of temporary imported PDFs.
-- Reduced duplicate file storage.
 - Lightweight SQLite schema.
-- Efficient annotation storage.
-- Efficient note storage.
-
-### Internal
-- Added Highlight APIs.
-- Added Note APIs.
-- Added Search Controller.
-- Added Annotation Infrastructure.
-- Extended SQLite schema.
-- Improved service architecture.
-- Improved persistence layer.
-
-### Known Limitations
-- Reading progress currently relies on Syncfusion page-change events.
-- Dominant page detection is planned for a future release.
-- Advanced search customization may be expanded in future versions.
 
 ---
 
@@ -202,39 +161,19 @@ This release introduces a complete migration to Syncfusion PDF Viewer and signif
 
 ### Added
 - User PDF upload support using File Picker.
-- Continue Reading dashboard.
-- Recent PDFs screen.
-- Persistent storage of user-selected PDFs.
-- Stable PDF ID generation for user, merged, and split PDFs.
+- Continue Reading dashboard and Recent PDFs screen.
+- Persistent storage of user-selected PDFs, with stable PDF ID generation for user, merged, and split PDFs.
 - Automatic resume-from-last-page support for uploaded PDFs.
 - Jump-to-page navigation.
-- Improved progress tracking across all PDF types.
-- Bookmark support on uploaded PDFs.
-- Bookmark support on merged PDFs.
-- Bookmark support on split PDFs.
-
-### Improved
-- Improved PDF loading workflow.
-- Improved reading progress calculation accuracy.
-- Improved persistence of user-selected PDFs across app restarts.
-- Improved Continue Reading and Recent PDFs experience.
-- Improved SQLite data handling and PDF identification.
-- Enhanced example application with a multi-PDF workflow.
+- Bookmark support on uploaded, merged, and split PDFs.
 
 ### Fixed
-- Fixed File Not Found issues caused by temporary File Picker cache paths.
-- Fixed reading progress never reaching 100% on the final page.
-- Fixed page 1 showing 0% progress.
-- Fixed Continue Reading not displaying newly opened PDFs.
-- Fixed Recent PDFs filtering issues.
-- Fixed progress tracking inconsistencies for merged and split PDFs.
-- Fixed bookmark persistence issues for generated PDFs.
-- Reduced lag during page jump navigation.
-- Improved PDF reopening and restoration behavior.
+- File Not Found issues caused by temporary File Picker cache paths.
+- Reading progress never reaching 100% on the final page.
+- Page 1 showing 0% progress.
+- Continue Reading and Recent PDFs display and filtering issues.
+- Bookmark persistence issues for generated PDFs.
 
 ### Internal
-- Added `PdfPickerService`.
-- Added `PdfIdHelper`.
+- Added `PdfPickerService` and `PdfIdHelper`.
 - Extended database schema to support user-selected PDFs.
-- Optimized controller initialization and persistence workflow.
-- Improved package architecture in preparation for future features, including text search, text highlighting, PDF annotation, page extraction, page rotation, password-protected PDFs, and thumbnail navigation.

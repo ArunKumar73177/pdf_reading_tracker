@@ -1,25 +1,41 @@
 name: pdf_reading_tracker
 
 description: >
-  Flutter PDF reader with progress tracking, bookmarks, annotations,
-  notes, search, host toolbar integration, offline SQLite persistence,
-  and PDF merge/split.
+  Flutter PDF reader with reading progress, bookmarks, annotations,
+  notes, search, host toolbar integration, offline SQLite persistence, 
+  and PDF merge/split, built on Syncfusion PDF Viewer.
 
-version: 4.1.0
+version: 5.0.0
 
 homepage: https://github.com/ArunKumar73177/pdf_reading_tracker
 repository: https://github.com/ArunKumar73177/pdf_reading_tracker
 issue_tracker: https://github.com/ArunKumar73177/pdf_reading_tracker/issues
+documentation: https://github.com/ArunKumar73177/pdf_reading_tracker#readme
 
+# Pub.dev allows a maximum of 5 topics.
 topics:
   - pdf
   - pdf-viewer
   - annotations
+  - bookmarks
   - sqlite
-  - ebook
+
+# Screenshots can be added here once image assets are committed to the
+# repository, e.g.:
+# screenshots:
+#   - description: 'Reader with immersive mode enabled'
+#     path: screenshots/immersive_mode.png
+
+# No funding links configured at this time.
+# funding:
+#   - https://github.com/sponsors/ArunKumar73177
+
+# Maintainer identity is managed via pub.dev's verified publisher program
+# rather than pubspec metadata.
 
 environment:
-  sdk: ^3.3.0
+  sdk: ">=3.3.0 <4.0.0"
+  flutter: ">=3.22.0"
 
 dependencies:
   flutter:

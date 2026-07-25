@@ -129,7 +129,7 @@ class _ReadingSettingsSheet extends StatelessWidget {
                             title: const Text('Immersive Reading Mode'),
                             subtitle: const Text(
                               'Hide the app bar and controls — tap the '
-                                  'page to show them again',
+                              'page to show them again',
                             ),
                             secondary: const Icon(Icons.fullscreen_rounded),
                             value: settings.immersiveModeEnabled,
@@ -142,7 +142,7 @@ class _ReadingSettingsSheet extends StatelessWidget {
                             subtitle: Text(
                               settings.immersiveModeEnabled
                                   ? 'Controls fade out automatically while '
-                                  'reading'
+                                      'reading'
                                   : 'Only applies while Immersive Mode is on',
                             ),
                             secondary: const Icon(Icons.visibility_off_rounded),
@@ -157,7 +157,7 @@ class _ReadingSettingsSheet extends StatelessWidget {
                             title: const Text('Keep Screen Awake'),
                             subtitle: const Text(
                               'Prevent the screen from sleeping while '
-                                  'reading',
+                              'reading',
                             ),
                             secondary: const Icon(Icons.light_mode_outlined),
                             value: settings.keepScreenAwakeEnabled,
@@ -181,9 +181,9 @@ class _ReadingSettingsSheet extends StatelessWidget {
                           ),
                           Padding(
                             padding:
-                            const EdgeInsets.only(left: AppSpacing.xxl + 8),
+                                const EdgeInsets.only(left: AppSpacing.xxl + 8),
                             child:
-                            _DndBadge(level: dndService.capability.level),
+                                _DndBadge(level: dndService.capability.level),
                           ),
                           // Bottom breathing room so the last row/badge
                           // never sits flush against the scroll edge.

@@ -141,9 +141,9 @@ class PdfReadingTrackerViewer extends StatefulWidget {
     this.showReadingSettingsToggle = true,
     this.onReadingSettingsChanged,
   }) : assert(
-  (assetPath != null) != (filePath != null),
-  'Provide exactly one of assetPath or filePath.',
-  );
+          (assetPath != null) != (filePath != null),
+          'Provide exactly one of assetPath or filePath.',
+        );
 
   final String pdfId;
   final String pdfTitle;
@@ -185,7 +185,7 @@ class PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
   late final DndService _dndService;
 
   final GlobalKey<sf.SfPdfViewerState> _sfViewerKey =
-  GlobalKey<sf.SfPdfViewerState>();
+      GlobalKey<sf.SfPdfViewerState>();
 
   bool _isLoading = true;
   String? _error;
@@ -212,7 +212,7 @@ class PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
   /// field and triggers a rebuild only of this widget's own subtree via
   /// `setState`, which a host app's external toolbar never observes.
   late final ValueNotifier<bool> _searchVisibleNotifier =
-  ValueNotifier<bool>(_searchVisible);
+      ValueNotifier<bool>(_searchVisible);
 
   /// Public facade for triggering reader actions and reading live counts
   /// from outside this widget. See [PdfReaderActions].
@@ -305,7 +305,7 @@ class PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
     _ctrl.init();
 
     _appearance =
-    AppearanceController(initialMode: widget.initialAppearanceMode)..init();
+        AppearanceController(initialMode: widget.initialAppearanceMode)..init();
 
     // Final Reader-integration pass: `_dndService` is now created BEFORE
     // `_readingSettings` (previously it was created last) so the same
@@ -323,7 +323,7 @@ class PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
     _readingSettings.addListener(_onReadingSettingsChanged);
 
     _immersiveVisibility =
-    ImmersiveVisibilityController(settings: _readingSettings)..init();
+        ImmersiveVisibilityController(settings: _readingSettings)..init();
   }
 
   @override
@@ -398,13 +398,13 @@ class PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
     final capturedText = snapshot?.selectedText ?? '';
     final capturedPage = snapshot?.page;
     final capturedRects = snapshot?.textLines
-        .map((l) => NoteRect(
-      left: l.bounds.left,
-      top: l.bounds.top,
-      right: l.bounds.right,
-      bottom: l.bounds.bottom,
-    ))
-        .toList(growable: false) ??
+            .map((l) => NoteRect(
+                  left: l.bounds.left,
+                  top: l.bounds.top,
+                  right: l.bounds.right,
+                  bottom: l.bounds.bottom,
+                ))
+            .toList(growable: false) ??
         const <NoteRect>[];
 
     try {
@@ -426,7 +426,7 @@ class PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
         page: capturedPage,
       );
     } on Exception catch (e) {
-      if (!mounted) return;
+      if (!ctx.mounted) return;
       ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(
         content: Text('Could not save note: $e'),
         backgroundColor: Theme.of(ctx).colorScheme.error,
@@ -466,7 +466,7 @@ class PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
       await _ctrl.addBookmark(
           note: (note == null || note.isEmpty) ? null : note);
     } on BookmarkServiceException catch (e) {
-      if (!mounted) return;
+      if (!ctx.mounted) return;
       ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(
         content: Text('Could not save bookmark: $e'),
         backgroundColor: Theme.of(ctx).colorScheme.error,
@@ -573,22 +573,23 @@ class PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
       final cs = Theme.of(context).colorScheme;
       return widget.showAppBar
           ? Scaffold(
-        appBar: AppBar(
-          title: Text(widget.pdfTitle, overflow: TextOverflow.ellipsis),
-          backgroundColor: widget.theme?.appBarBackgroundColor ?? cs.surface,
-          foregroundColor:
-          widget.theme?.appBarForegroundColor ?? cs.onSurface,
-          elevation: AppElevation.none,
-          surfaceTintColor: cs.surfaceTint,
-          shape: const RoundedRectangleBorder(
-            borderRadius: BorderRadius.only(
-              bottomLeft: Radius.circular(AppRadius.lg),
-              bottomRight: Radius.circular(AppRadius.lg),
-            ),
-          ),
-        ),
-        body: const Center(child: CircularProgressIndicator()),
-      )
+              appBar: AppBar(
+                title: Text(widget.pdfTitle, overflow: TextOverflow.ellipsis),
+                backgroundColor:
+                    widget.theme?.appBarBackgroundColor ?? cs.surface,
+                foregroundColor:
+                    widget.theme?.appBarForegroundColor ?? cs.onSurface,
+                elevation: AppElevation.none,
+                surfaceTintColor: cs.surfaceTint,
+                shape: const RoundedRectangleBorder(
+                  borderRadius: BorderRadius.only(
+                    bottomLeft: Radius.circular(AppRadius.lg),
+                    bottomRight: Radius.circular(AppRadius.lg),
+                  ),
+                ),
+              ),
+              body: const Center(child: CircularProgressIndicator()),
+            )
           : const Center(child: CircularProgressIndicator());
     }
 
@@ -597,22 +598,23 @@ class PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
       final errorBody = _ErrorView(message: _error!, onRetry: _ctrl.init);
       return widget.showAppBar
           ? Scaffold(
-        appBar: AppBar(
-          title: Text(widget.pdfTitle, overflow: TextOverflow.ellipsis),
-          backgroundColor: widget.theme?.appBarBackgroundColor ?? cs.surface,
-          foregroundColor:
-          widget.theme?.appBarForegroundColor ?? cs.onSurface,
-          elevation: AppElevation.none,
-          surfaceTintColor: cs.surfaceTint,
-          shape: const RoundedRectangleBorder(
-            borderRadius: BorderRadius.only(
-              bottomLeft: Radius.circular(AppRadius.lg),
-              bottomRight: Radius.circular(AppRadius.lg),
-            ),
-          ),
-        ),
-        body: errorBody,
-      )
+              appBar: AppBar(
+                title: Text(widget.pdfTitle, overflow: TextOverflow.ellipsis),
+                backgroundColor:
+                    widget.theme?.appBarBackgroundColor ?? cs.surface,
+                foregroundColor:
+                    widget.theme?.appBarForegroundColor ?? cs.onSurface,
+                elevation: AppElevation.none,
+                surfaceTintColor: cs.surfaceTint,
+                shape: const RoundedRectangleBorder(
+                  borderRadius: BorderRadius.only(
+                    bottomLeft: Radius.circular(AppRadius.lg),
+                    bottomRight: Radius.circular(AppRadius.lg),
+                  ),
+                ),
+              ),
+              body: errorBody,
+            )
           : errorBody;
     }
 
@@ -726,7 +728,7 @@ class PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
     return Scaffold(
       appBar: PreferredSize(
         preferredSize:
-        Size.fromHeight(kToolbarHeight + (_searchVisible ? 56.0 : 0.0)),
+            Size.fromHeight(kToolbarHeight + (_searchVisible ? 56.0 : 0.0)),
         child: ListenableBuilder(
           listenable: Listenable.merge([
             _ctrl.bookmarksNotifier,
@@ -949,14 +951,14 @@ class PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
               right: 12,
               child: (widget.enableHighlight && pending != null)
                   ? AnnotationActionBar(
-                key: const ValueKey('annotation_action_bar'),
-                selectedText: pending.selectedText,
-                onCommit: _commitAnnotation,
-                onDismiss: () {
-                  _ctrl.captureTextSelection(null, null, null);
-                  _ctrl.clearSnapshot();
-                },
-              )
+                      key: const ValueKey('annotation_action_bar'),
+                      selectedText: pending.selectedText,
+                      onCommit: _commitAnnotation,
+                      onDismiss: () {
+                        _ctrl.captureTextSelection(null, null, null);
+                        _ctrl.clearSnapshot();
+                      },
+                    )
                   : const SizedBox.shrink(),
             );
           },
@@ -975,8 +977,7 @@ class PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
                 _immersiveVisibility,
               ]),
               builder: (_, __) {
-                final immersiveOn =
-                    _readingSettings.value.immersiveModeEnabled;
+                final immersiveOn = _readingSettings.value.immersiveModeEnabled;
                 final hiddenByImmersive =
                     immersiveOn && !_immersiveVisibility.chromeVisible;
                 return IgnorePointer(
@@ -984,9 +985,8 @@ class PdfReadingTrackerViewerState extends State<PdfReadingTrackerViewer> {
                   child: AnimatedSlide(
                     duration: AppDurations.medium,
                     curve: AppDurations.curve,
-                    offset: hiddenByImmersive
-                        ? const Offset(0, 0.4)
-                        : Offset.zero,
+                    offset:
+                        hiddenByImmersive ? const Offset(0, 0.4) : Offset.zero,
                     child: AnimatedOpacity(
                       duration: AppDurations.medium,
                       curve: AppDurations.curve,
@@ -1234,8 +1234,7 @@ class _AppBarWithSearch extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
     final backgroundColor = viewerTheme?.appBarBackgroundColor ?? cs.surface;
-    final foregroundColor =
-        viewerTheme?.appBarForegroundColor ?? cs.onSurface;
+    final foregroundColor = viewerTheme?.appBarForegroundColor ?? cs.onSurface;
 
     final actionButtonStyle = IconButton.styleFrom(
       foregroundColor: foregroundColor,
@@ -1267,8 +1266,7 @@ class _AppBarWithSearch extends StatelessWidget {
           scrolledUnderElevation: AppElevation.low,
           surfaceTintColor: cs.surfaceTint,
           shape: const RoundedRectangleBorder(borderRadius: _kBottomRounded),
-          actionsPadding:
-          const EdgeInsets.symmetric(horizontal: AppSpacing.xs),
+          actionsPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.xs),
           actions: [
             if (enableSearch)
               IconButton(
@@ -1439,7 +1437,7 @@ class _PdfViewerCore extends StatelessWidget {
           onDocumentLoadFailed('${d.error}: ${d.description}'),
       onTextSelectionChanged: enableHighlight
           ? (sf.PdfTextSelectionChangedDetails d) =>
-          onTextSelectionChanged(d.selectedText, d.globalSelectedRegion)
+              onTextSelectionChanged(d.selectedText, d.globalSelectedRegion)
           : null,
     );
 

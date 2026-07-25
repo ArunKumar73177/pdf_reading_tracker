@@ -116,9 +116,8 @@ class ReaderProgressOverlay extends StatelessWidget {
     final rc = Theme.of(context).extension<ReaderColors>() ??
         ReaderColors.forBrightness(Theme.of(context).brightness);
 
-    final pageLabel = totalPages > 0
-        ? 'Page ${currentPage + 1} of $totalPages'
-        : 'Loading…';
+    final pageLabel =
+        totalPages > 0 ? 'Page ${currentPage + 1} of $totalPages' : 'Loading…';
     final pct = totalPages > 0 ? '$displayPercent%' : '';
 
     return RepaintBoundary(
@@ -132,7 +131,7 @@ class ReaderProgressOverlay extends StatelessWidget {
             decoration: BoxDecoration(
               color: rc.overlayBackground,
               borderRadius:
-              const BorderRadius.all(Radius.circular(AppRadius.pill)),
+                  const BorderRadius.all(Radius.circular(AppRadius.pill)),
               border: Border.all(
                 color: rc.overlayLabelSecondary.withAlpha(38),
                 width: 0.75,

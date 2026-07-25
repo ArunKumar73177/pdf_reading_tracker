@@ -11,18 +11,18 @@ class BookmarkButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
-    listenable: actions.listenable,
-    builder: (context, _) => IconButton(
-      icon: Badge(
-        isLabelVisible: actions.bookmarkCount > 0,
-        label: Text('${actions.bookmarkCount}'),
-        child: const Icon(Icons.bookmarks_outlined),
-      ),
-      color: color,
-      tooltip: 'View bookmarks',
-      onPressed: actions.showBookmarks,
-    ),
-  );
+        listenable: actions.listenable,
+        builder: (context, _) => IconButton(
+          icon: Badge(
+            isLabelVisible: actions.bookmarkCount > 0,
+            label: Text('${actions.bookmarkCount}'),
+            child: const Icon(Icons.bookmarks_outlined),
+          ),
+          color: color,
+          tooltip: 'View bookmarks',
+          onPressed: actions.showBookmarks,
+        ),
+      );
 }
 
 /// Icon button that opens the Notes sheet with a live count badge.
@@ -33,18 +33,18 @@ class NotesButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
-    listenable: actions.listenable,
-    builder: (context, _) => IconButton(
-      icon: Badge(
-        isLabelVisible: actions.noteCount > 0,
-        label: Text('${actions.noteCount}'),
-        child: const Icon(Icons.sticky_note_2_outlined),
-      ),
-      color: color,
-      tooltip: 'View notes',
-      onPressed: actions.showNotes,
-    ),
-  );
+        listenable: actions.listenable,
+        builder: (context, _) => IconButton(
+          icon: Badge(
+            isLabelVisible: actions.noteCount > 0,
+            label: Text('${actions.noteCount}'),
+            child: const Icon(Icons.sticky_note_2_outlined),
+          ),
+          color: color,
+          tooltip: 'View notes',
+          onPressed: actions.showNotes,
+        ),
+      );
 }
 
 /// Icon button that opens the Annotations (highlights) sheet.
@@ -55,18 +55,18 @@ class HighlightsButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
-    listenable: actions.listenable,
-    builder: (context, _) => IconButton(
-      icon: Badge(
-        isLabelVisible: actions.highlightCount > 0,
-        label: Text('${actions.highlightCount}'),
-        child: const Icon(Icons.format_color_text_rounded),
-      ),
-      color: color,
-      tooltip: 'View annotations',
-      onPressed: actions.showHighlights,
-    ),
-  );
+        listenable: actions.listenable,
+        builder: (context, _) => IconButton(
+          icon: Badge(
+            isLabelVisible: actions.highlightCount > 0,
+            label: Text('${actions.highlightCount}'),
+            child: const Icon(Icons.format_color_text_rounded),
+          ),
+          color: color,
+          tooltip: 'View annotations',
+          onPressed: actions.showHighlights,
+        ),
+      );
 }
 
 /// Icon button that toggles the plugin's own inline search bar.
@@ -77,16 +77,16 @@ class SearchButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
-    listenable: actions.listenable,
-    builder: (context, _) => IconButton(
-      icon: Icon(actions.searchVisible
-          ? Icons.search_off_rounded
-          : Icons.search_rounded),
-      color: color,
-      tooltip: actions.searchVisible ? 'Close search' : 'Search text',
-      onPressed: actions.toggleSearch,
-    ),
-  );
+        listenable: actions.listenable,
+        builder: (context, _) => IconButton(
+          icon: Icon(actions.searchVisible
+              ? Icons.search_off_rounded
+              : Icons.search_rounded),
+          color: color,
+          tooltip: actions.searchVisible ? 'Close search' : 'Search text',
+          onPressed: actions.toggleSearch,
+        ),
+      );
 }
 
 /// Icon button that opens the "Jump to page" dialog.
@@ -101,11 +101,11 @@ class JumpToPageButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => IconButton(
-    icon: const Icon(Icons.redo_rounded),
-    color: color,
-    tooltip: 'Jump to page',
-    onPressed: actions.jumpToPage,
-  );
+        icon: const Icon(Icons.redo_rounded),
+        color: color,
+        tooltip: 'Jump to page',
+        onPressed: actions.jumpToPage,
+      );
 }
 
 /// Icon button that opens the Appearance picker sheet.
@@ -131,14 +131,14 @@ class AppearanceButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
-    listenable: actions.listenable,
-    builder: (context, _) => IconButton(
-      icon: Icon(iconFor(actions.appearanceMode)),
-      color: color,
-      tooltip: 'Appearance',
-      onPressed: actions.showAppearanceSelector,
-    ),
-  );
+        listenable: actions.listenable,
+        builder: (context, _) => IconButton(
+          icon: Icon(iconFor(actions.appearanceMode)),
+          color: color,
+          tooltip: 'Appearance',
+          onPressed: actions.showAppearanceSelector,
+        ),
+      );
 }
 
 /// Icon button that opens the Reading Settings sheet.
@@ -153,11 +153,11 @@ class ReadingSettingsButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => IconButton(
-    icon: const Icon(Icons.tune_rounded),
-    color: color,
-    tooltip: 'Reading settings',
-    onPressed: actions.showReadingSettings,
-  );
+        icon: const Icon(Icons.tune_rounded),
+        color: color,
+        tooltip: 'Reading settings',
+        onPressed: actions.showReadingSettings,
+      );
 }
 
 /// Overflow items shown in [PdfReaderToolbar]'s "more" menu. Mirrors the
@@ -261,8 +261,7 @@ class PdfReaderToolbar extends StatelessWidget {
           if (showSearch) const SizedBox(width: _kIconGap),
           if (showNotes) NotesButton(actions: actions, color: color),
           if (showNotes) const SizedBox(width: _kIconGap),
-          if (showHighlights)
-            HighlightsButton(actions: actions, color: color),
+          if (showHighlights) HighlightsButton(actions: actions, color: color),
           if (showHighlights) const SizedBox(width: _kIconGap),
           if (showBookmarks) BookmarkButton(actions: actions, color: color),
           if (hasOverflowItems)
